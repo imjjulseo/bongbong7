@@ -1,0 +1,12 @@
+path: data/object
+train: images/train
+val: images/val
+
+# config/field_config.py의 YOLO_OBJECT_CLASS_MAP과 반드시 순서 일치
+names:
+  0: big
+  1: cluster
+  2: dumb
+  3: medium
+  4: missile
+  5: small

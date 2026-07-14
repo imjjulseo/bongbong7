@@ -11,3 +11,5 @@ models/
 runs/
 debug_viz/
 enhancement/generated_dataset/
+data/object/images/
+data/object/labels/
