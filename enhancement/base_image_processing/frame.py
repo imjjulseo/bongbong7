@@ -46,7 +46,7 @@ def extract_frames_png(video_path, output_dir, frame_interval=5):
 # 실행 예시
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    VIDEO_FILE = BASE_DIR / "drone_empty.mp4" 
-    OUTPUT_FOLDER = BASE_DIR / "empty_dataset_png" 
+    VIDEO_FILE = BASE_DIR / "drone_empty2.mp4" 
+    OUTPUT_FOLDER = BASE_DIR / "empty_dataset" 
     
     extract_frames_png(VIDEO_FILE, OUTPUT_FOLDER, frame_interval=5)
