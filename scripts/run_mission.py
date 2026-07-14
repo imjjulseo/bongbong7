@@ -79,6 +79,7 @@ def main():
                                 output_dir=output_dir,
                                 detector_backend=args.detector_backend,
                                 facility_backend=args.facility_backend)
+    pipeline.send_start(send_to_dashboard=args.send)
     result = pipeline.run(frames, send_to_dashboard=args.send)
 
     print(f"[3/3] 완료! 결과 저장 위치: {output_dir}\n")

@@ -235,7 +235,7 @@ TRANSMIT_ORDER = [
     "start", "crater_detect", "crater_count", "runway_status",
     "facility_status", "uxo_detect", "uxo_count", "report",
 ]
-TRANSMIT_DUPLICATE_COUNT = 2   # 수신 유실 대비, 동일 JSON을 순차로 몇 번 중복 전송할지
+TRANSMIT_DUPLICATE_COUNT = 1   # 수신 유실 대비, 동일 JSON을 순차로 몇 번 중복 전송할지
 TRANSMIT_TIMEOUT_SEC = 5
 
 
