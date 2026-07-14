@@ -351,6 +351,24 @@ class YoloFacilityClassifier(FacilityStatusBackend):
         self.class_map = class_map or fc.YOLO_FACILITY_CLASS_MAP
         self.model = YOLO(self.weights_path)
 
+    def _resolve_status(self, result, cls_idx: int) -> str:
+        """클래스 인덱스 -> 상태 코드.
+        ultralytics 분류(cls) 학습은 클래스 폴더명을 '알파벳순'으로 정렬해 인덱스를 부여하므로
+        (normal/destroy/fire 폴더 -> 0:destroy,1:fire,2:normal), 위치 기반 class_map은 학습 폴더
+        순서와 어긋나기 쉽다. 그래서 학습된 모델이 들고 있는 실제 클래스명(result.names)을 최우선으로
+        쓰고, 그 값이 상태 코드(FACILITY_STATUS_OPTIONS)에 있으면 그대로 채택한다. 폴더명을
+        normal/destroy/fire로만 두면 정렬 순서가 바뀌어도 자동으로 맞는다.
+        model.names를 못 얻는 경우에만 config의 class_map으로 폴백한다."""
+        names = getattr(result, "names", None)
+        if names is not None:
+            if isinstance(names, dict):
+                name = names.get(cls_idx)
+            else:
+                name = names[cls_idx] if 0 <= cls_idx < len(names) else None
+            if name in fc.FACILITY_STATUS_OPTIONS:
+                return name
+        return self.class_map.get(cls_idx, "unconfirmed")
+
     def _parse_result(self, result) -> Tuple[str, float]:
         if getattr(result, "probs", None) is not None:  # 분류(cls) 모델
             cls_idx = int(result.probs.top1)
@@ -361,8 +379,11 @@ class YoloFacilityClassifier(FacilityStatusBackend):
             confidence = float(best.conf[0])
         else:
             return "unconfirmed", 0.0
-        status = self.class_map.get(cls_idx, "unconfirmed")
-        return status, round(confidence, 2)
+        # 신뢰도가 임계값 미만이면 이 프레임 판정은 보류(unconfirmed).
+        # 시계열 다수결(aggregate_temporal_status)에서 자연히 걸러진다.
+        if confidence < self.conf_threshold:
+            return "unconfirmed", round(confidence, 2)
+        return self._resolve_status(result, cls_idx), round(confidence, 2)
 
     def classify_frame(self, roi_bgr: np.ndarray) -> Tuple[str, float]:
         if roi_bgr.size == 0:

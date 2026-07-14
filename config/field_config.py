@@ -183,11 +183,16 @@ YOLO_OBJECT_CLASS_MAP = {
 # --- 시설물 상태 YOLO11n-cls 모델 설정 (3-B: 고정 6좌표 배치 추론) ---
 YOLO_FACILITY_WEIGHTS = "models/yolo11n_facility_cls.pt"
 YOLO_FACILITY_CONF_THRESHOLD = 0.4
-# 학습 클래스 idx -> 상태 코드(영문=JSON 출력값). data.yaml/분류 폴더 순서와 반드시 일치시킬 것.
+# 학습 클래스 idx -> 상태 코드(영문=JSON 출력값).
+# ultralytics 분류(cls) 학습은 클래스 폴더명을 '알파벳순'으로 정렬해 인덱스를 부여함
+#   (normal/destroy/fire 폴더 -> 0:destroy, 1:fire, 2:normal). 아래 맵도 그 순서에 맞춰 둠.
+# 단, 추론 시 detection.YoloFacilityClassifier가 학습된 모델의 result.names(폴더명 그대로)를
+# 우선 사용하므로, 분류 폴더명을 normal/destroy/fire로만 두면 정렬 순서가 바뀌어도 자동으로 맞음.
+# 이 맵은 model.names를 못 얻는 예외 상황의 폴백일 뿐임.
 YOLO_FACILITY_CLASS_MAP = {
-    0: "normal",
-    1: "destroy",
-    2: "fire",
+    0: "destroy",
+    1: "fire",
+    2: "normal",
 }
 
 
@@ -214,7 +219,7 @@ YOLO_BATCH_SIZE_MAX = 30
 # ---------------------------------------------------------
 # 12. 영상 입력 파이프라인 (watchdog 감시 + 프레임 추출)
 # ---------------------------------------------------------
-VIDEO_INPUT_DIR = "video_input"             # 이 폴더에 영상 파일이 생성되면 감지
+VIDEO_INPUT_DIR = r"C:\Users\Admin\Documents\filerecvsender\local_inbox"  # 이 폴더에 영상 파일이 생성되면 감지
 VIDEO_FILE_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
 FRAME_EXTRACT_INTERVAL = 30                 # N프레임마다 1장 추출 (실측 드론 영상 fps 확인 후 갱신 필요)
 VIDEO_STABLE_WAIT_SEC = 1.0                 # 파일 크기가 더 이상 변하지 않을 때까지 대기(쓰기 완료 판단)

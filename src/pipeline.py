@@ -47,20 +47,26 @@ from transmitter import transmit_all
 class MissionPipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
                  output_dir: str = "output",
-                 detector_backend: str = None, facility_backend: str = None):
+                 detector_backend: str = None, facility_backend: str = None,
+                 object_weights: str = None, facility_weights: str = None):
         """
         detector_backend / facility_backend: "classical" | "yolo" (생략 시 field_config의
         DETECTOR_BACKEND / FACILITY_BACKEND 사용). YOLO11n 가중치가 준비되면
         field_config 값만 바꾸거나, 이 인자로 특정 실행만 다른 백엔드로 돌려볼 수 있습니다.
+        object_weights / facility_weights: yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS /
+        YOLO_FACILITY_WEIGHTS 대신 쓸 가중치 경로 (학습 도중 체크포인트를 바로 테스트할 때 등).
         """
         self.mission_code = mission_code
         self.use_llm = use_llm
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
+        object_kwargs = {"weights_path": object_weights} if object_weights else {}
+        facility_kwargs = {"weights_path": facility_weights} if facility_weights else {}
+
         self.calibrator = FieldCalibrator()
-        self.object_detector = build_object_detector(detector_backend)
-        self.facility_classifier = build_facility_classifier(facility_backend)
+        self.object_detector = build_object_detector(detector_backend, **object_kwargs)
+        self.facility_classifier = build_facility_classifier(facility_backend, **facility_kwargs)
 
         self.timing = {}
 
@@ -83,10 +89,15 @@ class MissionPipeline:
         t_start = time.time()
         outputs = {}
         saved_files = []
+        transmit_results = []
 
         # ---------------- 준비단계 (start.json) ----------------
         outputs["start"] = schemas.build_start_json(self.mission_code)
         saved_files.append(self._save("start.json", outputs["start"]))
+
+        # start.json은 추론을 기다리지 않고 임무 시작 시점에 바로 전송 (나머지 7개는 추론 완료 후 전송)
+        if send_to_dashboard:
+            transmit_results.append(transmit_all(outputs, order=["start"]))
 
         # ---------------- 2단계 + 3-A/3-B: 프레임별 워핑 + 배치 추론 ----------------
         # 프레임마다 재보정하는 이유: 드론이 미세하게 움직이면 카메라 자세가 바뀌므로,
@@ -189,7 +200,7 @@ class MissionPipeline:
             "longest_available_run": {"segments": best_run, "length_m": length_m},
             "available_length_m": length_m,
         }
-        runway_available_length_cm = int(round(runway_result["available_length_m"] * 100))
+        runway_available_length_cm = int(round(runway_result["available_length_m"]))
         outputs["runway_status"] = schemas.build_runway_status_json(
             self.mission_code, runway_available_length_cm
         )
@@ -249,9 +260,17 @@ class MissionPipeline:
         validation = validate_all(outputs)
 
         # ---------------- 6단계: 대시보드 전송 (선택, 기본 비활성) ----------------
-        transmit_result = None
+        # start.json은 위에서 이미 전송했으므로, 여기서는 추론이 끝난 나머지 7개만 전송.
         if send_to_dashboard:
-            transmit_result = transmit_all(outputs)
+            remaining_order = [k for k in fc.TRANSMIT_ORDER if k != "start"]
+            transmit_results.append(transmit_all(outputs, order=remaining_order))
+
+        transmit_result = None
+        if transmit_results:
+            transmit_result = {
+                "endpoint_configured": all(r["endpoint_configured"] for r in transmit_results),
+                "results": [item for r in transmit_results for item in r["results"]],
+            }
 
         return {
             "outputs": outputs,
