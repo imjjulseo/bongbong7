@@ -13,3 +13,4 @@ debug_viz/
 enhancement/generated_dataset/
 data/object/images/
 data/object/labels/
+data/raw/

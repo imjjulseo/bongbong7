@@ -240,7 +240,27 @@ TRANSMIT_TIMEOUT_SEC = 5
 
 
 # ---------------------------------------------------------
-# 14. LLM 상황보고서 글자수 제약 (5단계)
+# 14. LLM 상황보고서 글자수 제약 (5단계) - 대회 규정: 공백 포함 100자 이내
 # ---------------------------------------------------------
 REPORT_MIN_CHARS = 50
 REPORT_MAX_CHARS = 100
+
+# ---------------------------------------------------------
+# 15. 활주로 상태/운용여부 판정 기준 (상황보고서용, 대회 규정)
+#     가용길이(m) 구간별로 상태와 운용여부를 판정.
+# ---------------------------------------------------------
+RUNWAY_STATUS_THRESHOLDS = [
+    # (최소 가용길이(m, 이상), 상태, 운용여부)
+    (2100, "정상", "사용 가능"),
+    (1500, "제한 운용", "제한적 사용 가능"),
+    (900, "비상 운용", "사용 가능 여부 검토"),
+    (0, "운용 불가", "사용 불가(폐쇄)"),
+]
+
+
+def classify_runway_status(available_length_m: float):
+    """활주로 가용길이(m)에 따른 (상태, 운용여부) 판정."""
+    for threshold, status, availability in RUNWAY_STATUS_THRESHOLDS:
+        if available_length_m >= threshold:
+            return status, availability
+    return RUNWAY_STATUS_THRESHOLDS[-1][1], RUNWAY_STATUS_THRESHOLDS[-1][2]
