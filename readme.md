@@ -128,6 +128,39 @@ python tests/test_core.py
 # 또는: python -m pytest tests/ -v
 ```
 
+## 로컬 LLM(Ollama) 설치 방법
+
+`report_generator.py`는 기본적으로 로컬 Ollama(`http://localhost:11434`)를 사용해
+상황보고서를 생성합니다. 설치가 안 되어 있으면 자동으로 오프라인 템플릿으로 폴백되므로
+임무 자체는 실패하지 않지만, LLM 문장을 쓰려면 아래대로 설치해야 합니다.
+
+### 1) Ollama 설치
+- **Windows**: PowerShell에서
+  ```powershell
+  winget install --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements
+  ```
+  (또는 https://ollama.com/download 에서 설치 파일 직접 다운로드)
+- **macOS**: https://ollama.com/download 에서 다운로드하거나 `brew install ollama`
+- **Linux**: `curl -fsSL https://ollama.com/install.sh | sh`
+
+설치 후 Ollama 앱(또는 `ollama serve`)이 실행 중이어야 `localhost:11434`가 응답합니다.
+설치 프로그램이 보통 백그라운드 서비스로 자동 등록하므로 재부팅해도 자동 실행됩니다.
+
+### 2) 모델 다운로드
+```bash
+ollama pull qwen2.5:7b-instruct
+```
+`report_generator.py`의 `OLLAMA_MODEL` 기본값과 이름이 일치해야 합니다. 대회 PC 사양이
+낮으면 더 가벼운 `qwen2.5:3b`로 바꿔도 됩니다(`OLLAMA_MODEL` 값만 수정).
+
+### 3) 정상 동작 확인
+```bash
+curl http://localhost:11434/api/tags
+```
+설치된 모델 목록이 JSON으로 나오면 정상입니다. 이후 `python scripts/run_mission.py --synthetic`을
+실행했을 때 결과 출력의 "보고서(local_llm)"처럼 `local_llm`으로 표시되면 실제 LLM이 쓰인 것이고,
+`offline_template`으로 표시되면 (Ollama 미설치/미실행 등으로) 템플릿 폴백이 동작한 것입니다.
+
 ## 탐지 백엔드 전환 (고전 CV ↔ YOLO11n)
 
 `src/detection.py`는 폭파구/불발탄 탐지와 시설물 상태 분류를 각각
