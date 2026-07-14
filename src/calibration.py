@@ -109,3 +109,32 @@ class FieldCalibrator:
         px_y_max = int(np.clip(corners_px[:, 1].max(), 0, h - 1))
         return px_x_min, px_y_min, max(1, px_x_max - px_x_min), max(1, px_y_max - px_y_min)
 
+    # -----------------------------------------------------------------
+    def warp_to_topview(self, image_bgr: np.ndarray, px_per_cm: float = None):
+        """
+        2단계 핵심: 원본 프레임을 '경기장 실좌표계와 픽셀이 1:1로 정렬된' 탑뷰(bird's eye)
+        이미지로 워핑합니다. 이 결과물의 픽셀좌표는 (world_cm * px_per_cm)와 정확히 같으므로,
+        이후 zone 타일 crop(3-A)이나 시설물 ROI crop(3-B)은 프레임별 역투영 없이
+        단순 픽셀 슬라이싱만으로 계산할 수 있습니다.
+
+        pixel_to_world가 만드는 호모그래피 H(pixel->world_cm) 앞에 스케일 행렬을 곱해
+        pixel->topview_pixel 호모그래피를 만들고, 그걸로 이미지 자체를 워핑합니다.
+
+        반환: (topview_bgr, px_per_cm)
+        """
+        if self.homography is None:
+            raise RuntimeError("먼저 calibrate_from_image()를 호출하세요.")
+        px_per_cm = px_per_cm if px_per_cm is not None else fc.WARP_PX_PER_CM
+        canvas_w = int(round(fc.FIELD_WIDTH_CM * px_per_cm))
+        canvas_h = int(round(fc.FIELD_HEIGHT_CM * px_per_cm))
+
+        scale = np.array([
+            [px_per_cm, 0, 0],
+            [0, px_per_cm, 0],
+            [0, 0, 1],
+        ], dtype=np.float64)
+        H_topview = scale @ self.homography
+
+        topview = cv2.warpPerspective(image_bgr, H_topview, (canvas_w, canvas_h))
+        return topview, px_per_cm
+

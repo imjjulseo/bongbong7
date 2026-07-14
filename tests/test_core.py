@@ -8,6 +8,7 @@ test_core.py
 import os
 import sys
 import unittest
+import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
@@ -17,8 +18,11 @@ import runway_analysis as rwa
 import facility_analysis as fca
 from geo_dedup import dedup_by_world_distance
 from validator import validate_all
-from detection import classify_blob
+from detection import classify_blob, aggregate_temporal_status
 import schemas
+import tiling
+from report_generator import generate_report_offline_template, _enforce_length
+from transmitter import transmit_all
 
 
 class TestRunwayLongestRun(unittest.TestCase):
@@ -48,26 +52,70 @@ class TestRunwayLongestRun(unittest.TestCase):
         self.assertAlmostEqual(length_m, 300.0, places=1)
 
 
+class TestZoneTileOrder(unittest.TestCase):
+    def test_zone_tile_order_matches_runway_and_taxiways(self):
+        """ZONE_TILE_ORDER는 활주로+유도로A+유도로B 20개 zone으로 구성되어야 함"""
+        self.assertEqual(len(fc.ZONE_TILE_ORDER), 20)
+        self.assertEqual(
+            set(fc.ZONE_TILE_ORDER),
+            set(fc.RUNWAY_SEGMENT_ORDER) | set(fc.TAXIWAY_A_ORDER) | set(fc.TAXIWAY_B_ORDER),
+        )
+
+
+class TestTiling(unittest.TestCase):
+    def test_crop_zone_tiles_covers_all_zones_without_overlap(self):
+        """탑뷰 캔버스에서 20개 zone 타일이 모두 잘리고, 크기가 실좌표 폭*px_per_cm와 일치해야 함"""
+        px_per_cm = fc.WARP_PX_PER_CM
+        canvas = np.zeros((fc.WARP_CANVAS_HEIGHT_PX, fc.WARP_CANVAS_WIDTH_PX, 3), dtype=np.uint8)
+        tiles = tiling.crop_zone_tiles(canvas, px_per_cm)
+        self.assertEqual(set(tiles.keys()), set(fc.ZONE_TILE_ORDER))
+        b = fc.SEGMENTS["RW-01"]
+        expected_w = int(round((b["x_max"] - b["x_min"]) * px_per_cm))
+        expected_h = int(round((b["y_max"] - b["y_min"]) * px_per_cm))
+        tile_h, tile_w = tiles["RW-01"].shape[:2]
+        self.assertEqual(tile_w, expected_w)
+        self.assertEqual(tile_h, expected_h)
+
+    def test_crop_facility_rois_covers_all_slots(self):
+        px_per_cm = fc.WARP_PX_PER_CM
+        canvas = np.zeros((fc.WARP_CANVAS_HEIGHT_PX, fc.WARP_CANVAS_WIDTH_PX, 3), dtype=np.uint8)
+        rois = tiling.crop_facility_rois(canvas, px_per_cm)
+        self.assertEqual(set(rois.keys()), set(fc.FACILITY_SLOTS))
+
+
 class TestFacilitySlotSafetyNet(unittest.TestCase):
     def test_missing_detections_still_fill_6_slots(self):
         """
         핵심 안전장치 테스트: 탐지 결과가 하나도 없어도(빈 딕셔너리)
-        보고서에는 반드시 6개 시설물 슬롯이 모두 존재해야 함 ('미확인' 상태로).
+        보고서에는 반드시 6개 시설물 슬롯이 모두 존재해야 함 ('unconfirmed' 상태로).
         """
         facilities = fca.build_facility_report({})  # 탐지 결과 없음
         self.assertEqual(len(facilities), 6)
         for f in facilities:
-            self.assertEqual(f["status"], "미확인")
+            self.assertEqual(f["status"], "unconfirmed")
             self.assertIn(f["slot"], fc.FACILITY_SLOTS)
 
     def test_partial_detection_fills_rest_as_unconfirmed(self):
-        """일부만 탐지되어도 나머지가 '미확인'으로 채워져 절대 슬롯이 빠지지 않아야 함"""
-        partial = {"FA-01": {"status": "정상", "confidence": 0.9}}
+        """일부만 탐지되어도 나머지가 'unconfirmed'로 채워져 절대 슬롯이 빠지지 않아야 함"""
+        partial = {"FA-01": {"status": "normal", "confidence": 0.9}}
         facilities = fca.build_facility_report(partial)
         self.assertEqual(len(facilities), 6)
         statuses = {f["slot"]: f["status"] for f in facilities}
-        self.assertEqual(statuses["FA-01"], "정상")
-        self.assertEqual(statuses["FA-02"], "미확인")
+        self.assertEqual(statuses["FA-01"], "normal")
+        self.assertEqual(statuses["FA-02"], "unconfirmed")
+
+
+class TestAggregateTemporalStatus(unittest.TestCase):
+    def test_majority_vote(self):
+        results = [("normal", 0.9), ("normal", 0.8), ("fire", 0.4)]
+        status, conf = aggregate_temporal_status(results)
+        self.assertEqual(status, "normal")
+        self.assertAlmostEqual(conf, 0.85, places=2)
+
+    def test_empty_returns_unconfirmed(self):
+        status, conf = aggregate_temporal_status([])
+        self.assertEqual(status, "unconfirmed")
+        self.assertEqual(conf, 0.0)
 
 
 class TestGeoDedup(unittest.TestCase):
@@ -87,15 +135,33 @@ class TestGeoDedup(unittest.TestCase):
 
 class TestBlobClassification(unittest.TestCase):
     def test_large_round_object_is_crater(self):
-        """치수표상 대형 폭파구에 가까운 크기+형태는 '폭파구'로 분류되어야 함"""
+        """치수표상 big 폭파구에 가까운 크기+형태는 'crater'로 분류되어야 함"""
         category, subtype, conf = classify_blob(diameter_mm=190, long_axis_mm=200, aspect_ratio=1.1)
         self.assertEqual(category, "crater")
 
     def test_small_elongated_object_is_uxo(self):
-        """작고 매우 길쭉한 물체는 '불발탄'(미사일 등)으로 분류되어야 함"""
+        """작고 매우 길쭉한 물체는 'uxo'(missile 등)으로 분류되어야 함"""
         category, subtype, conf = classify_blob(diameter_mm=70, long_axis_mm=115, aspect_ratio=2.3)
         self.assertEqual(category, "uxo")
-        self.assertEqual(subtype, "미사일")
+        self.assertEqual(subtype, "missile")
+
+
+class TestReportLength(unittest.TestCase):
+    def test_offline_template_within_length_bounds(self):
+        summary = {
+            "crater_count_total": 2, "runway_crater_count": 1,
+            "runway_available_length_m": 300.0,
+            "facility_damage_summary": {"normal": 4, "destroy": 1, "fire": 1, "unconfirmed": 0},
+            "uxo_count_total": 1, "uxo_runway_count": 1,
+        }
+        text = generate_report_offline_template(summary)
+        self.assertGreaterEqual(len(text), 1)
+        self.assertLessEqual(len(text), fc.REPORT_MAX_CHARS)
+
+    def test_enforce_length_truncates_long_text(self):
+        long_text = "가" * 200
+        text = _enforce_length(long_text)
+        self.assertLessEqual(len(text), fc.REPORT_MAX_CHARS)
 
 
 class TestValidator(unittest.TestCase):
@@ -120,10 +186,21 @@ class TestValidator(unittest.TestCase):
             ),
             "uxo_detect": schemas.build_uxo_detect_json(fc.MISSION_CODE, []),
             "uxo_count": schemas.build_uxo_count_json(fc.MISSION_CODE, 0),
-            "report": schemas.build_report_json(fc.MISSION_CODE, "정상 상황입니다.", {}),
+            "report": schemas.build_report_json(
+                fc.MISSION_CODE, "활주로 가용길이 3000.0m로 이착륙 가능, 폭파구 0개, 시설물 전원 정상 확인됨.", {}
+            ),
         }
         result = validate_all(outputs)
         self.assertTrue(result["ok"], msg=result["errors"])
+
+
+class TestTransmitterStub(unittest.TestCase):
+    def test_stub_when_endpoint_not_configured(self):
+        """엔드포인트 미설정 시 실제 네트워크 호출 없이 스텁 결과만 반환해야 함"""
+        outputs = {"start": {"mission_code": "TEST"}}
+        result = transmit_all(outputs, endpoint=None)
+        self.assertFalse(result["endpoint_configured"])
+        self.assertEqual(result["results"][0]["sent"], False)
 
 
 if __name__ == "__main__":

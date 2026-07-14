@@ -51,9 +51,9 @@ def validate_all(outputs: dict, raise_on_error: bool = False):
         missing = set(fc.FACILITY_SLOTS) - slots_present
         if missing:
             errors.append(f"시설물 슬롯 누락: {sorted(missing)}")
-        unconfirmed = [f["slot"] for f in facilities if f.get("status") == "미확인"]
+        unconfirmed = [f["slot"] for f in facilities if f.get("status") == "unconfirmed"]
         if unconfirmed:
-            warnings.append(f"미확인 상태인 시설물: {unconfirmed} (재정찰 권장)")
+            warnings.append(f"미확인(unconfirmed) 상태인 시설물: {unconfirmed} (재정찰 권장)")
 
     # 4. uxo_count <= uxo_detect 총 개수
     if "uxo_detect" in outputs and "uxo_count" in outputs:
@@ -71,11 +71,16 @@ def validate_all(outputs: dict, raise_on_error: bool = False):
         if avail is not None and not (0 <= avail <= max_possible_m):
             errors.append(f"활주로 가용길이({avail}m)가 물리적으로 불가능한 범위입니다.")
 
-    # 6. report.json 텍스트 비어있는지
+    # 6. report.json 텍스트 비어있는지 + 글자수 제약(50~100자) 확인
     if "report" in outputs:
         text = outputs["report"].get("report_text", "")
         if not text or len(text.strip()) < 5:
             errors.append("report_text가 비어있거나 너무 짧습니다.")
+        elif not (fc.REPORT_MIN_CHARS <= len(text.strip()) <= fc.REPORT_MAX_CHARS):
+            warnings.append(
+                f"report_text 글자수({len(text.strip())})가 규정 범위"
+                f"({fc.REPORT_MIN_CHARS}~{fc.REPORT_MAX_CHARS}자)를 벗어났습니다."
+            )
 
     ok = len(errors) == 0
     if raise_on_error and not ok:
