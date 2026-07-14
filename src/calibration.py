@@ -53,18 +53,26 @@ class FieldCalibrator:
             criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
             for c in corners:
                 cv2.cornerSubPix(gray, c, (5, 5), (-1, -1), criteria)
-
+        
         pixel_pts = []
         world_pts = []
         marker_corner_list = []
+        
         for marker_corners, marker_id in zip(corners, ids.flatten()):
             marker_id = int(marker_id)
-            marker_corner_list.append(marker_corners[0])  # 4x2 픽셀 코너 (마스킹용, 필드 밖 마커 포함)
+            marker_corner_list.append(marker_corners[0]) 
+            
             if marker_id not in fc.ARUCO_MARKER_WORLD_POSITIONS:
-                continue  # 필드 밖/미사용 마커는 무시
-            center_px = marker_corners[0].mean(axis=0)  # (x,y) 픽셀 중심
-            pixel_pts.append(center_px)
+                continue 
+            
+            # [수정된 부분] 중심점 대신 마커의 특정 코너를 가져옴
+            # config에 정의된 인덱스를 사용하되, 없으면 기본값 0(좌상단) 사용
+            corner_idx = fc.ARUCO_MARKER_CORNER_INDEX.get(marker_id, 0)
+            target_pixel = marker_corners[0][corner_idx] # (x, y) 픽셀좌표
+            
+            pixel_pts.append(target_pixel)
             world_pts.append(fc.ARUCO_MARKER_WORLD_POSITIONS[marker_id])
+            
         self.last_marker_corners = marker_corner_list
 
         if len(pixel_pts) < 4:
