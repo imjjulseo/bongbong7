@@ -1,43 +1,29 @@
 {
-  "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-14T02:19:44.462789+00:00",
-  "facility_count": 6,
-  "facilities": [
+  "mission_code": "SHUUFT9A",
+  "facility_status": [
     {
-      "slot": "FA-01",
-      "type": "control_tower",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-01",
+      "status": "normal"
     },
     {
-      "slot": "FA-02",
-      "type": "radar",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-02",
+      "status": "fire"
     },
     {
-      "slot": "FA-03",
-      "type": "hangar",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-03",
+      "status": "destroy"
     },
     {
-      "slot": "FA-04",
-      "type": "building_1",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-04",
+      "status": "normal"
     },
     {
-      "slot": "FA-05",
-      "type": "building_2",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-05",
+      "status": "normal"
     },
     {
-      "slot": "FA-06",
-      "type": "weapon_depot",
-      "status": "unconfirmed",
-      "confidence": 0.0
+      "zone": "FA-06",
+      "status": "normal"
     }
   ]
 }

@@ -165,15 +165,9 @@ class MissionPipeline:
         craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
         self._toc("crater_postprocess")
 
-        crater_list_out = []
-        for i, c in enumerate(craters_deduped):
-            crater_list_out.append({
-                "id": f"CR-{i+1:03d}",
-                "segment": c["segment"],
-                "size_class": c["size_class"],
-                "center_world_cm": [round(c["world_xy"][0], 1), round(c["world_xy"][1], 1)],
-                "diameter_m": round(c["diameter_mm"] / 1000.0, 2),
-            })
+        crater_list_out = [
+            {"zone": c["segment"], "size": c["size_class"]} for c in craters_deduped
+        ]
         outputs["crater_detect"] = schemas.build_crater_detect_json(self.mission_code, crater_list_out)
         saved_files.append(self._save("crater_detect.json", outputs["crater_detect"]))
 
@@ -195,11 +189,9 @@ class MissionPipeline:
             "longest_available_run": {"segments": best_run, "length_m": length_m},
             "available_length_m": length_m,
         }
+        runway_available_length_cm = int(round(runway_result["available_length_m"] * 100))
         outputs["runway_status"] = schemas.build_runway_status_json(
-            self.mission_code,
-            runway_result["longest_available_run"],
-            runway_result["blocked_segments"],
-            runway_result["available_length_m"],
+            self.mission_code, runway_available_length_cm
         )
         saved_files.append(self._save("runway_status.json", outputs["runway_status"]))
         self._toc("runway_analysis")
@@ -213,7 +205,8 @@ class MissionPipeline:
             status, conf = aggregate_temporal_status(frame_results)
             detections_by_slot[slot] = {"status": status, "confidence": conf}
         facilities = fca.build_facility_report(detections_by_slot)
-        outputs["facility_status"] = schemas.build_facility_status_json(self.mission_code, facilities)
+        facility_list_out = [{"zone": f["slot"], "status": f["status"]} for f in facilities]
+        outputs["facility_status"] = schemas.build_facility_status_json(self.mission_code, facility_list_out)
         saved_files.append(self._save("facility_status.json", outputs["facility_status"]))
         self._toc("facility_analysis")
 
@@ -222,15 +215,9 @@ class MissionPipeline:
         uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
         self._toc("uxo_postprocess")
 
-        uxo_list_out = []
-        for i, u in enumerate(uxo_deduped):
-            uxo_list_out.append({
-                "id": f"UXO-{i+1:03d}",
-                "segment": u["segment"],
-                "type": u["type"],
-                "center_world_cm": [round(u["world_xy"][0], 1), round(u["world_xy"][1], 1)],
-                "confidence": u["confidence"],
-            })
+        uxo_list_out = [
+            {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped
+        ]
         outputs["uxo_detect"] = schemas.build_uxo_detect_json(self.mission_code, uxo_list_out)
         saved_files.append(self._save("uxo_detect.json", outputs["uxo_detect"]))
 
@@ -251,9 +238,7 @@ class MissionPipeline:
             "uxo_runway_count": runway_uxo_count,
         }
         report_result = generate_report(report_summary, use_llm=self.use_llm)
-        outputs["report"] = schemas.build_report_json(
-            self.mission_code, report_result["text"], report_summary
-        )
+        outputs["report"] = schemas.build_report_json(self.mission_code, report_result["text"])
         saved_files.append(self._save("report.json", outputs["report"]))
         self._toc("report_generation")
 
