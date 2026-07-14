@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 import field_config as fc
+import enhancement_smoke as smoke
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -233,6 +234,28 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
                 bg_img = overlay_transparent(bg_img, obj_rotated_tight, rand_x, rand_y)
                 placed_boxes.append(current_box)
                 placed = True
+
+                # SMOKE
+                if random.random() < 0.5:
+                    smoke_cx = int(rand_x + obj_w / 2)
+                    smoke_cy = int(rand_y + obj_h / 2)
+                    
+                    # 객체 크기에 비례하여 연기 반경 설정 (원하는 크기로 변경 가능)
+                    smoke_radius = random.randint(int(obj_w * 0.8), int(obj_w * 2.0))
+                    smoke_density = random.uniform(0.5, 0.9)
+                    
+                    # 어두운 회색부터 밝은 회색까지 랜덤 연기 색상
+                    gray_val = random.randint(100, 220)
+                    smoke_color = (gray_val, gray_val, gray_val)
+                    
+                    bg_img = smoke.add_smoke(
+                        image=bg_img, 
+                        center_x=smoke_cx, 
+                        center_y=smoke_cy, 
+                        radius=smoke_radius, 
+                        density=smoke_density, 
+                        smoke_color=smoke_color
+                    )
                 
                 # YOLO Bounding Box 텍스트 기록
                 class_id = YOLO_CLASS_MAP.get(cls_name, -1)
@@ -261,7 +284,7 @@ if __name__ == "__main__":
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
     
-    objects_dir = BASE_DIR / "generate_object_image/extracted_objects"
+    objects_dir = BASE_DIR / "generate_object_image/extracted_objects_advanced"
     object_pool = {}
     for cls_name in YOLO_CLASS_MAP.keys():
         cls_folder = objects_dir / cls_name
