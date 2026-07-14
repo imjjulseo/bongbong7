@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 import field_config as fc
 from pipeline import MissionPipeline
+from img_io import imread_safe, imwrite_safe
 
 
 def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2):
@@ -74,7 +75,7 @@ def extract_frames(video_path: str, output_dir: str, interval: int = None) -> li
                 break
             if frame_idx % interval == 0:
                 out_path = os.path.join(output_dir, f"{base_name}_frame_{saved_idx:04d}.png")
-                cv2.imwrite(out_path, frame)
+                imwrite_safe(out_path, frame)
                 saved_paths.append(out_path)
                 saved_idx += 1
             frame_idx += 1
@@ -94,7 +95,7 @@ def process_video(video_path: str, args):
     if args.no_auto_run or not frame_paths:
         return
 
-    frames = [cv2.imread(p) for p in frame_paths]
+    frames = [imread_safe(p) for p in frame_paths]
     frames = [f for f in frames if f is not None]
     if not frames:
         print("[video_watcher] 추출된 프레임을 읽지 못해 파이프라인을 건너뜁니다.")

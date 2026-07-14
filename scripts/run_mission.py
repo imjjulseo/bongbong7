@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 from pipeline import MissionPipeline
 import field_config as fc
+from img_io import imread_safe
 
 
 def load_frames_from_dir(images_dir):
@@ -33,7 +34,7 @@ def load_frames_from_dir(images_dir):
     files = sorted([f for f in os.listdir(images_dir) if f.lower().endswith(exts)])
     frames = []
     for f in files:
-        img = cv2.imread(os.path.join(images_dir, f))
+        img = imread_safe(os.path.join(images_dir, f))
         if img is not None:
             frames.append(img)
     return frames

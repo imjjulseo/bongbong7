@@ -22,6 +22,7 @@ import cv2
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import field_config as fc
+from img_io import imwrite_safe
 
 PX_PER_CM = 4
 MARGIN_PX = 60
@@ -441,7 +442,7 @@ def main(out_dir):
     for i in range(4):
         frame = generate_scene(seed=i, fire_flicker_phase=i * 1.6)
         path = os.path.join(out_dir, f"frame_{i:02d}.png")
-        cv2.imwrite(path, frame)
+        imwrite_safe(path, frame)
         frames.append(path)
         print(f"생성됨: {path}  (shape={frame.shape})")
     return frames
