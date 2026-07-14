@@ -10,3 +10,4 @@ test_images/*_frame_*.png
 models/
 runs/
 debug_viz/
+enhancement/generated_dataset/

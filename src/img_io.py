@@ -24,11 +24,12 @@ def imread_safe(path, flags=cv2.IMREAD_COLOR):
     return cv2.imdecode(data, flags)
 
 
-def imwrite_safe(path, img):
+def imwrite_safe(path, img, params=None):
     """cv2.imwrite와 동일하게 동작하되, 비-ASCII 경로에서도 안전하게 씁니다.
+    params: cv2.imwrite의 인코딩 파라미터(예: [cv2.IMWRITE_PNG_COMPRESSION, 0])와 동일한 형식.
     성공 여부를 bool로 반환합니다."""
     ext = os.path.splitext(path)[1] or ".png"
-    ok, encoded = cv2.imencode(ext, img)
+    ok, encoded = cv2.imencode(ext, img, params or [])
     if not ok:
         return False
     try:
