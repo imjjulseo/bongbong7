@@ -168,8 +168,9 @@ class TestValidator(unittest.TestCase):
     def test_catches_facility_slot_missing(self):
         """시설물 슬롯이 5개만 있으면(1개 누락) 검증에서 오류로 잡혀야 함"""
         facilities = fca.build_facility_report({})[:5]  # 강제로 1개 슬롯 제거
+        facility_list = [{"zone": f["slot"], "status": f["status"]} for f in facilities]
         outputs = {
-            "facility_status": schemas.build_facility_status_json("TEST0000", facilities)
+            "facility_status": schemas.build_facility_status_json("TEST0000", facility_list)
         }
         result = validate_all(outputs)
         self.assertFalse(result["ok"])
@@ -177,17 +178,16 @@ class TestValidator(unittest.TestCase):
 
     def test_valid_output_passes(self):
         facilities = fca.build_facility_report({})
+        facility_list = [{"zone": f["slot"], "status": f["status"]} for f in facilities]
         outputs = {
-            "facility_status": schemas.build_facility_status_json(fc.MISSION_CODE, facilities),
+            "facility_status": schemas.build_facility_status_json(fc.MISSION_CODE, facility_list),
             "crater_detect": schemas.build_crater_detect_json(fc.MISSION_CODE, []),
             "crater_count": schemas.build_crater_count_json(fc.MISSION_CODE, 0),
-            "runway_status": schemas.build_runway_status_json(
-                fc.MISSION_CODE, {"segments": fc.RUNWAY_SEGMENT_ORDER, "length_m": 3000.0}, [], 3000.0
-            ),
+            "runway_status": schemas.build_runway_status_json(fc.MISSION_CODE, 300000),
             "uxo_detect": schemas.build_uxo_detect_json(fc.MISSION_CODE, []),
             "uxo_count": schemas.build_uxo_count_json(fc.MISSION_CODE, 0),
             "report": schemas.build_report_json(
-                fc.MISSION_CODE, "활주로 가용길이 3000.0m로 이착륙 가능, 폭파구 0개, 시설물 전원 정상 확인됨.", {}
+                fc.MISSION_CODE, "활주로 가용길이 3000.0m로 이착륙 가능, 폭파구 0개, 시설물 전원 정상 확인됨."
             ),
         }
         result = validate_all(outputs)
