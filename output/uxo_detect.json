@@ -6,6 +6,10 @@
       "type": "dumb"
     },
     {
+      "zone": "TW-B1",
+      "type": "dumb"
+    },
+    {
       "zone": "TW-A1",
       "type": "missile"
     },
@@ -14,20 +18,12 @@
       "type": "missile"
     },
     {
-      "zone": "TW-B1",
-      "type": "dumb"
-    },
-    {
       "zone": "TW-B4",
       "type": "cluster"
     },
     {
       "zone": "RW-03",
       "type": "cluster"
-    },
-    {
-      "zone": "RW-06",
-      "type": "dumb"
     }
   ]
 }

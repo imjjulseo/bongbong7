@@ -44,6 +44,27 @@ from validator import validate_all
 from transmitter import transmit_all
 
 
+def _one_per_zone(items: list) -> list:
+    """대회 서버가 crater_detect/uxo_detect에서 같은 zone이 2번 이상 나오면 요청 전체를
+    400으로 거부하는 것을 현장 테스트로 확인함(2026-07-14). 같은 구역에 물체가 여러 개
+    잡혀도 zone당 신뢰도가 가장 높은 항목 하나만 남겨서 전송한다.
+    (활주로 폭파구/불발탄 개수 집계 등 다른 용도에는 원본 리스트를 그대로 써야 함 - 이 함수는
+    전송용 리스트를 만들 때만 사용할 것.)"""
+    best_by_zone = {}
+    for item in items:
+        zone = item["segment"]
+        if zone not in best_by_zone or item["confidence"] > best_by_zone[zone]["confidence"]:
+            best_by_zone[zone] = item
+    return list(best_by_zone.values())
+
+
+def _cap_top_n(items: list, n: int) -> list:
+    """대회 서버가 crater_detect는 5구간, uxo_detect는 6구간을 초과하면 요청 전체를 400으로
+    거부하는 것을 현장 테스트로 확인함(2026-07-14) - 실제 게임 규칙상 폭파구/불발탄 총
+    개수 상한과 일치하는 것으로 보임. 신뢰도가 가장 높은 상위 n개만 남긴다."""
+    return sorted(items, key=lambda x: x["confidence"], reverse=True)[:n]
+
+
 class MissionPipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
                  output_dir: str = "output",
@@ -181,13 +202,15 @@ class MissionPipeline:
         craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
         self._toc("crater_postprocess")
 
+        craters_one_per_zone = _cap_top_n(_one_per_zone(craters_deduped), fc.MAX_CRATER_ZONES)
         crater_list_out = [
-            {"zone": c["segment"], "size": c["size_class"]} for c in craters_deduped
+            {"zone": c["segment"], "size": c["size_class"]} for c in craters_one_per_zone
         ]
         outputs["crater_detect"] = schemas.build_crater_detect_json(self.mission_code, crater_list_out)
         saved_files.append(self._save("crater_detect.json", outputs["crater_detect"]))
 
-        runway_crater_count = uxa.count_craters_on_runway(craters_deduped)
+        # crater_count도 crater_detect와 같은(zone당 1개, 상한 적용) 기준으로 세야 두 JSON의 개수가 서로 맞음
+        runway_crater_count = uxa.count_craters_on_runway(craters_one_per_zone)
         outputs["crater_count"] = schemas.build_crater_count_json(self.mission_code, runway_crater_count)
         saved_files.append(self._save("crater_count.json", outputs["crater_count"]))
 
@@ -231,13 +254,15 @@ class MissionPipeline:
         uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
         self._toc("uxo_postprocess")
 
+        uxo_one_per_zone = _cap_top_n(_one_per_zone(uxo_deduped), fc.MAX_UXO_ZONES)
         uxo_list_out = [
-            {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped
+            {"zone": u["segment"], "type": u["type"]} for u in uxo_one_per_zone
         ]
         outputs["uxo_detect"] = schemas.build_uxo_detect_json(self.mission_code, uxo_list_out)
         saved_files.append(self._save("uxo_detect.json", outputs["uxo_detect"]))
 
-        runway_uxo_count = uxa.count_uxo_on_runway(uxo_deduped)
+        # uxo_count도 uxo_detect와 같은(zone당 1개, 상한 적용) 기준으로 세야 두 JSON의 개수가 서로 맞음
+        runway_uxo_count = uxa.count_uxo_on_runway(uxo_one_per_zone)
         outputs["uxo_count"] = schemas.build_uxo_count_json(self.mission_code, runway_uxo_count)
         saved_files.append(self._save("uxo_count.json", outputs["uxo_count"]))
 

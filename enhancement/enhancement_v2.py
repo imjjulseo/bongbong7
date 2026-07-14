@@ -255,7 +255,7 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
 
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    num_images_to_generate = 10
+    num_images_to_generate = 100
     
     dataset_dir = BASE_DIR / "generated_dataset"
     images_dir = dataset_dir / "images"
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
     
-    objects_dir = BASE_DIR / "generate_object_image/extracted_objects"
+    objects_dir = BASE_DIR / "generate_object_image/extracted_objects_advanced"
     object_pool = {}
     for cls_name in YOLO_CLASS_MAP.keys():
         cls_folder = objects_dir / cls_name

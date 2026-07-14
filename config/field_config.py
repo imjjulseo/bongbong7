@@ -162,13 +162,13 @@ MISSION_TIME_LIMIT_SEC = 180
 # 아래 두 값만 "yolo"로 바꾸면 src/pipeline.py 수정 없이 백엔드가 전환됩니다.
 # (src/detection.py의 build_object_detector()/build_facility_classifier() 참고)
 DETECTOR_BACKEND = "yolo"         # "classical" | "yolo" - 폭파구/불발탄 통합 탐지 (확정 파이프라인: yolo)
-FACILITY_BACKEND = "classical"   # "classical" | "yolo" - 시설물 상태(normal/destroy/fire) 분류 (확정 파이프라인: yolo)
+FACILITY_BACKEND = "yolo"        # "classical" | "yolo" - 시설물 상태(normal/destroy/fire) 분류 (확정 파이프라인: yolo)
 
 # --- 폭파구/불발탄 YOLO 모델 설정 (3-A: zone 타일 배치 추론) ---
-# 2026-07-14: enhancement.py로 생성한 합성 데이터셋(100장, data/object.yaml)으로 yolo11n 학습.
-# 클래스 순서는 알파벳순(0:big,1:cluster,2:dumb,3:medium,4:missile,5:small)을 그대로 따름.
+# 2026-07-14: 팀원이 학습한 yolov8n_object_v2.pt로 교체. model.names로 클래스 순서
+# (0:big,1:cluster,2:dumb,3:medium,4:missile,5:small) 일치 확인 완료.
 # 나중에 다른 학습 데이터셋을 쓸 경우 반드시 그 data.yaml의 names 순서와 다시 맞출 것.
-YOLO_OBJECT_WEIGHTS = "models/yolo11n_object.pt"
+YOLO_OBJECT_WEIGHTS = "models/yolov8n_object_v2.pt"
 YOLO_OBJECT_CONF_THRESHOLD = 0.4
 # 학습 클래스 idx -> (category, subtype[영문 코드=JSON 출력값]). data.yaml의 names 순서와 반드시 일치시킬 것.
 YOLO_OBJECT_CLASS_MAP = {
@@ -237,6 +237,12 @@ TRANSMIT_ORDER = [
 ]
 TRANSMIT_DUPLICATE_COUNT = 1   # 수신 유실 대비, 동일 JSON을 순차로 몇 번 중복 전송할지
 TRANSMIT_TIMEOUT_SEC = 5
+
+# 대회 서버가 crater_detect/uxo_detect에서 같은 zone이 2번 이상 나오거나 구간 수를
+# 초과하면 요청 전체를 400으로 거부하는 것을 현장 테스트로 확인함(2026-07-14) -
+# 실제 게임 규칙상 폭파구/불발탄 총 개수 상한과 일치.
+MAX_CRATER_ZONES = 5
+MAX_UXO_ZONES = 6
 
 
 # ---------------------------------------------------------

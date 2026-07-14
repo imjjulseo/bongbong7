@@ -3,11 +3,11 @@
   "facility_status": [
     {
       "zone": "FA-01",
-      "status": "normal"
+      "status": "destroy"
     },
     {
       "zone": "FA-02",
-      "status": "normal"
+      "status": "destroy"
     },
     {
       "zone": "FA-03",
@@ -15,7 +15,7 @@
     },
     {
       "zone": "FA-04",
-      "status": "normal"
+      "status": "destroy"
     },
     {
       "zone": "FA-05",
@@ -23,7 +23,7 @@
     },
     {
       "zone": "FA-06",
-      "status": "normal"
+      "status": "destroy"
     }
   ]
 }
