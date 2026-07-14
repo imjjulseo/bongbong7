@@ -7,11 +7,11 @@
     },
     {
       "zone": "FA-02",
-      "status": "fire"
+      "status": "normal"
     },
     {
       "zone": "FA-03",
-      "status": "destroy"
+      "status": "normal"
     },
     {
       "zone": "FA-04",

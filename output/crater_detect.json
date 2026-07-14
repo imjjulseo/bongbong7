@@ -2,11 +2,23 @@
   "mission_code": "SHUUFT9A",
   "crater_detect": [
     {
-      "zone": "RW-03",
+      "zone": "RW-02",
       "size": "medium"
     },
     {
-      "zone": "RW-07",
+      "zone": "RW-04",
+      "size": "medium"
+    },
+    {
+      "zone": "RW-06",
+      "size": "medium"
+    },
+    {
+      "zone": "TW-A5",
+      "size": "small"
+    },
+    {
+      "zone": "TW-B5",
       "size": "big"
     }
   ]

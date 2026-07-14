@@ -104,6 +104,7 @@ class MissionState:
             mission_code=fc.MISSION_CODE, use_llm=not args.no_llm,
             output_dir=args.output,
             detector_backend=args.detector_backend, facility_backend=args.facility_backend,
+            object_weights=args.weights,
         )
 
 
@@ -197,6 +198,8 @@ def run_watch(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--video-dir", type=str, default=fc.VIDEO_INPUT_DIR, help="감시할 영상 입력 폴더")
+    parser.add_argument("--video-file", type=str, default=None,
+                         help="video-dir 전체를 스캔하지 않고 지정한 영상 파일 하나만 처리")
     parser.add_argument("--output", type=str, default="output", help="결과 JSON 저장 폴더")
     parser.add_argument("--interval", type=int, default=None, help="N프레임마다 추출 (생략 시 field_config.FRAME_EXTRACT_INTERVAL)")
     parser.add_argument("--watch", action="store_true", help="폴더를 계속 감시(watchdog)")
@@ -206,10 +209,17 @@ def main():
     parser.add_argument("--send", action="store_true", help="파이프라인 완료 후 대시보드 전송(6단계)까지 실행")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None)
+    parser.add_argument("--weights", type=str, default=None,
+                         help="yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS 대신 쓸 가중치(.pt) 경로 "
+                              "(학습 중인 체크포인트를 바로 테스트할 때 등)")
     args = parser.parse_args()
 
+    if args.video_file:
+        process_video(args.video_file, args, MissionState(args))
+        return
+
     if not args.watch and not args.once:
-        print("`--watch`(계속 감시) 또는 `--once`(폴더에 있는 영상만 1회 처리) 중 하나를 지정하세요.")
+        print("`--video-file <파일>`, `--watch`(계속 감시), `--once`(폴더에 있는 영상만 1회 처리) 중 하나를 지정하세요.")
         sys.exit(1)
 
     if args.once:
