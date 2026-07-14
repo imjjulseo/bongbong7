@@ -106,6 +106,9 @@ class MissionState:
             detector_backend=args.detector_backend, facility_backend=args.facility_backend,
             object_weights=args.weights,
         )
+        # start.json은 특정 영상의 프레임 추출 완료 시점이 아니라, video_watcher.py 세션이
+        # 시작되는 지금(첫 영상이 들어오기 전) 딱 1번만 생성/전송합니다.
+        self.pipeline.send_start(send_to_dashboard=args.send)
 
 
 def process_video(video_path: str, args, state: "MissionState"):

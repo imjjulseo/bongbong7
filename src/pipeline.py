@@ -80,24 +80,29 @@ class MissionPipeline:
         return elapsed
 
     # -----------------------------------------------------------------
+    def send_start(self, send_to_dashboard: bool = False):
+        """준비단계(start.json) 생성/저장/전송. video_watcher.py 실행(세션) 시점에 딱 1번만
+        호출해야 합니다 - 영상이 여러 개로 나뉘어 들어와도 run()이 그때마다 재전송하지 않도록
+        run()과 분리되어 있습니다."""
+        start_doc = schemas.build_start_json(self.mission_code)
+        saved_file = self._save("start.json", start_doc)
+        transmit_result = None
+        if send_to_dashboard:
+            transmit_result = transmit_all({"start": start_doc}, order=["start"])
+        return {"start": start_doc, "saved_file": saved_file, "transmit_result": transmit_result}
+
+    # -----------------------------------------------------------------
     def run(self, frames_bgr: list, send_to_dashboard: bool = False):
         """
         frames_bgr: watchdog/프레임 추출 단계에서 넘어온 여러 프레임(numpy BGR 이미지) 리스트
         send_to_dashboard: True면 6단계(전송)까지 실행. 기본은 파일 저장까지만.
-        반환: outputs 딕셔너리(8개 JSON) + 저장된 파일 경로 목록 + 검증/전송 결과
+        반환: outputs 딕셔너리(7개 JSON, start.json 제외) + 저장된 파일 경로 목록 + 검증/전송 결과
+
+        주의: start.json은 이 메서드가 아니라 send_start()가 세션 시작 시 1번만 담당합니다.
         """
         t_start = time.time()
         outputs = {}
         saved_files = []
-        transmit_results = []
-
-        # ---------------- 준비단계 (start.json) ----------------
-        outputs["start"] = schemas.build_start_json(self.mission_code)
-        saved_files.append(self._save("start.json", outputs["start"]))
-
-        # start.json은 추론을 기다리지 않고 임무 시작 시점에 바로 전송 (나머지 7개는 추론 완료 후 전송)
-        if send_to_dashboard:
-            transmit_results.append(transmit_all(outputs, order=["start"]))
 
         # ---------------- 2단계 + 3-A/3-B: 프레임별 워핑 + 배치 추론 ----------------
         # 프레임마다 재보정하는 이유: 드론이 미세하게 움직이면 카메라 자세가 바뀌므로,
@@ -260,17 +265,11 @@ class MissionPipeline:
         validation = validate_all(outputs)
 
         # ---------------- 6단계: 대시보드 전송 (선택, 기본 비활성) ----------------
-        # start.json은 위에서 이미 전송했으므로, 여기서는 추론이 끝난 나머지 7개만 전송.
+        # start.json은 send_start()가 세션 시작 시 이미 전송했으므로, 여기서는 나머지 7개만 전송.
+        transmit_result = None
         if send_to_dashboard:
             remaining_order = [k for k in fc.TRANSMIT_ORDER if k != "start"]
-            transmit_results.append(transmit_all(outputs, order=remaining_order))
-
-        transmit_result = None
-        if transmit_results:
-            transmit_result = {
-                "endpoint_configured": all(r["endpoint_configured"] for r in transmit_results),
-                "results": [item for r in transmit_results for item in r["results"]],
-            }
+            transmit_result = transmit_all(outputs, order=remaining_order)
 
         return {
             "outputs": outputs,
