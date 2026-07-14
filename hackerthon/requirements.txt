@@ -1,0 +1,7 @@
+numpy>=1.24
+opencv-contrib-python>=4.8   # cv2.aruco 포함 버전 (opencv-python 단독은 aruco 미포함일 수 있음)
+requests>=2.31
+
+# 선택 (실전 확장용, 지금 코드는 없어도 동작함)
+# ultralytics        # YOLO 학습 모델을 붙이려면 설치 (대회 PC에 GPU 있고 로컬 설치 가능할 때)
+# onnxruntime        # YOLO를 ONNX로 변환해 빠르게 추론하려면

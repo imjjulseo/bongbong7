@@ -1,0 +1,22 @@
+{
+  "mission_code": "LKUSDC8O",
+  "timestamp": "2026-07-12T10:54:53.774387+00:00",
+  "report_text": "활주로 및 유도로 정찰 결과 총 2개의 폭파구가 식별되었으며, 장애구간을 제외한 최장 가용 활주로 길이는 약 900.0m로 산출됨. 현 가용길이 기준 항공기 이착륙은 가능할 것으로 판단됨. 시설물 중 화재 1개소, 파손 1개소가 확인되어 우선 복구가 필요함. 불발탄 2개(활주로 구간 1개 포함)가 탐지되어 폭발물처리반(EOD) 투입이 요구됨.",
+  "summary": {
+    "crater_count_total": 2,
+    "runway_crater_count": 2,
+    "runway_available_length_m": 900.0,
+    "runway_blocked_segments": [
+      "RW-03",
+      "RW-07"
+    ],
+    "facility_damage_summary": {
+      "정상": 4,
+      "파손": 1,
+      "화재": 1,
+      "미확인": 0
+    },
+    "uxo_count_total": 2,
+    "uxo_runway_count": 1
+  }
+}

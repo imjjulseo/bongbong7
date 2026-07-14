@@ -1,0 +1,43 @@
+{
+  "mission_code": "LKUSDC8O",
+  "timestamp": "2026-07-12T10:54:53.773616+00:00",
+  "facility_count": 6,
+  "facilities": [
+    {
+      "slot": "FA-01",
+      "type": "관제탑",
+      "status": "정상",
+      "confidence": 0.99
+    },
+    {
+      "slot": "FA-02",
+      "type": "관제레이더",
+      "status": "화재",
+      "confidence": 0.87
+    },
+    {
+      "slot": "FA-03",
+      "type": "격납고",
+      "status": "파손",
+      "confidence": 0.55
+    },
+    {
+      "slot": "FA-04",
+      "type": "일반건물1",
+      "status": "정상",
+      "confidence": 0.99
+    },
+    {
+      "slot": "FA-05",
+      "type": "일반건물2",
+      "status": "정상",
+      "confidence": 1.0
+    },
+    {
+      "slot": "FA-06",
+      "type": "무기고",
+      "status": "정상",
+      "confidence": 0.99
+    }
+  ]
+}
