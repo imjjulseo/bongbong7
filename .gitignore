@@ -4,3 +4,4 @@ video_input/*
 video_input_building/*
 test_images/*_frame_*.png
 __pycache__/
+*.pt
