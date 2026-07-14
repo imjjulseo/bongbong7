@@ -15,21 +15,55 @@ import field_config as fc
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# 물리적 거리(cm) 설정: 픽셀이 아닌 실제 거리로 패딩 보장
-BOUNDARY_MARGIN_CM = 5.0   # 구역 경계선과 객체 테두리 사이의 최소 여백
-OBJECT_PADDING_CM = 2.0    # 객체와 객체 사이의 최소 간격
+# 물리적 거리(cm) 설정
+BOUNDARY_MARGIN_CM = 5.0
+OBJECT_PADDING_CM = 2.0
 
 YOLO_CLASS_MAP = {
     "big": 0, "cluster": 1, "dumb": 2, 
     "medium": 3, "missile": 4, "small": 5
 }
 
+# 초록색(잔디) 판별을 위한 HSV 색상 범위 설정
+LOWER_GREEN = np.array([35, 40, 40])
+UPPER_GREEN = np.array([85, 255, 255])
+
 # ---------------------------------------------------------
-# 2. 이미지 처리 헬퍼 함수
+# 2. 이미지 처리 및 색상 판별 헬퍼 함수
 # ---------------------------------------------------------
+def is_grass_object(img_bgra, green_threshold=0.05):
+    """객체(누끼 이미지)의 유효 픽셀 중 초록색 픽셀 비율이 기준치 이상인지 확인"""
+    if img_bgra.shape[2] != 4:
+        return False
+        
+    hsv = cv2.cvtColor(img_bgra[:, :, :3], cv2.COLOR_BGR2HSV)
+    mask_green = cv2.inRange(hsv, LOWER_GREEN, UPPER_GREEN)
+    
+    alpha_channel = img_bgra[:, :, 3]
+    visible_green = cv2.bitwise_and(mask_green, mask_green, mask=alpha_channel)
+    
+    green_count = cv2.countNonZero(visible_green)
+    total_visible = cv2.countNonZero(alpha_channel)
+    
+    if total_visible == 0: return False
+    return (green_count / total_visible) > green_threshold
+
+def is_grass_background(bg_bgr, x, y, w, h, green_threshold=0.4):
+    """배치될 배경 영역(ROI)의 초록색 픽셀 비율이 기준치(잔디밭) 이상인지 확인"""
+    roi = bg_bgr[y:y+h, x:x+w]
+    if roi.size == 0: return False
+    
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    mask_green = cv2.inRange(hsv, LOWER_GREEN, UPPER_GREEN)
+    
+    green_count = cv2.countNonZero(mask_green)
+    total_pixels = w * h
+    
+    if total_pixels == 0: return False
+    return (green_count / total_pixels) > green_threshold
+
 def crop_to_visible_alpha(image):
-    if image.shape[2] != 4:
-        return image
+    if image.shape[2] != 4: return image
     alpha_channel = image[:, :, 3]
     coords = cv2.findNonZero(alpha_channel)
     if coords is not None:
@@ -38,7 +72,6 @@ def crop_to_visible_alpha(image):
     return image
 
 def rotate_image_with_alpha(image, angle):
-    """투명도를 유지하며 캔버스를 확장해 객체를 회전시킴"""
     h, w = image.shape[:2]
     center = (w // 2, h // 2)
     M = cv2.getRotationMatrix2D(center, angle, 1.0)
@@ -52,16 +85,14 @@ def rotate_image_with_alpha(image, angle):
     M[1, 2] += (new_h / 2) - center[1]
     
     rotated = cv2.warpAffine(image, M, (new_w, new_h), 
-                             borderMode=cv2.BORDER_CONSTANT, 
-                             borderValue=(0, 0, 0, 0))
+                             borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
     return rotated
 
 def overlay_transparent(background, overlay, x, y):
     bg_h, bg_w = background.shape[:2]
     h, w = overlay.shape[:2]
 
-    if x >= bg_w or y >= bg_h or x + w <= 0 or y + h <= 0:
-        return background
+    if x >= bg_w or y >= bg_h or x + w <= 0 or y + h <= 0: return background
 
     bg_x1, bg_x2 = max(0, x), min(bg_w, x + w)
     bg_y1, bg_y2 = max(0, y), min(bg_h, y + h)
@@ -79,8 +110,7 @@ def overlay_transparent(background, overlay, x, y):
     return background
 
 def get_pixel_zone_rect(zone_name, px_per_cm):
-    if zone_name not in fc.SEGMENTS:
-        return None
+    if zone_name not in fc.SEGMENTS: return None
     cm_rect = fc.SEGMENTS[zone_name]
     return (
         int(cm_rect["x_min"] * px_per_cm),
@@ -92,11 +122,8 @@ def get_pixel_zone_rect(zone_name, px_per_cm):
 def is_overlapping(box1, box2, padding_px):
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
-    # 패딩을 더해서 객체 간 여유 공간을 계산
-    if x1 >= x2 + w2 + padding_px or x2 >= x1 + w1 + padding_px:
-        return False
-    if y1 >= y2 + h2 + padding_px or y2 >= y1 + h1 + padding_px:
-        return False
+    if x1 >= x2 + w2 + padding_px or x2 >= x1 + w1 + padding_px: return False
+    if y1 >= y2 + h2 + padding_px or y2 >= y1 + h1 + padding_px: return False
     return True
 
 # ---------------------------------------------------------
@@ -113,42 +140,27 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
     bg_h, bg_w = bg_img.shape[:2]
     actual_px_per_cm = bg_w / fc.FIELD_WIDTH_CM
     
-    # cm 단위를 실제 픽셀 단위로 변환
     margin_px = int(BOUNDARY_MARGIN_CM * actual_px_per_cm)
     obj_padding_px = int(OBJECT_PADDING_CM * actual_px_per_cm)
 
-    # 구역 분류
+    # 시설물(FA) 구역은 완전히 배제하고 RW, TW 구역만 사용
     all_zones = list(fc.SEGMENTS.keys())
     rw_tw_zones = [z for z in all_zones if not z.startswith("FA")]
-    fa_zones = [z for z in all_zones if z.startswith("FA")]
 
     crater_classes = ["big", "medium", "small"]
     uxo_classes = ["cluster", "dumb", "missile"]
 
-    # ---------------------------------------------------------
-    # [조건 할당] 객체를 어느 구역에 넣을지 미리 분배
-    # ---------------------------------------------------------
-    zone_assignments = {z: [] for z in all_zones}
-
-    # 1. 활주로/유도로(RW/TW) 구역에 폭파구 총 5개 무작위 분배
-    for z in random.choices(rw_tw_zones, k=5):
+    # 활주로/유도로(RW/TW) 구역에 폭파구 5개, 불발탄 6개 분배
+    zone_assignments = {z: [] for z in rw_tw_zones}
+    for z in random.sample(rw_tw_zones, k=5):
         zone_assignments[z].append(random.choice(crater_classes))
-
-    # 2. 활주로/유도로(RW/TW) 구역에 불발탄 총 6개 무작위 분배
-    for z in random.choices(rw_tw_zones, k=6):
+    for z in random.sample(rw_tw_zones, k=6):
         zone_assignments[z].append(random.choice(uxo_classes))
-
-    # 3. 시설물(FA) 구역에는 불발탄을 자유롭게 배치 (구역당 0~2개 무작위)
-    for z in fa_zones:
-        num_uxos = random.randint(0, 0)
-        for _ in range(num_uxos):
-            zone_assignments[z].append(random.choice(uxo_classes))
 
     yolo_annotations = []
 
     for zone_name, assigned_classes in zone_assignments.items():
-        if not assigned_classes:
-            continue
+        if not assigned_classes: continue
             
         rect_px = get_pixel_zone_rect(zone_name, actual_px_per_cm)
         if not rect_px: continue
@@ -157,25 +169,41 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
         placed_boxes = []
 
         for cls_name in assigned_classes:
-            if not object_pool.get(cls_name):
-                continue
-            # 해당 클래스의 누끼 이미지 중 하나를 랜덤 선택
-            obj_path = random.choice(object_pool[cls_name])
-            obj_img = cv2.imread(str(obj_path), cv2.IMREAD_UNCHANGED)
-            if obj_img is None: continue
+            if not object_pool.get(cls_name): continue
                 
-            # Roboflow 추출 이미지는 이미 스케일이 맞으므로 리사이즈 생략!
-            obj_cropped = crop_to_visible_alpha(obj_img)
+            valid_obj_found = False
+            obj_cropped = None
+            needs_grass_bg = False
             
-            # 무작위 회전 적용
+            # 1. 객체 선별 과정 (최대 30번 재시도)
+            for _ in range(30):
+                obj_path = random.choice(object_pool[cls_name])
+                obj_img = cv2.imread(str(obj_path), cv2.IMREAD_UNCHANGED)
+                if obj_img is None: continue
+                    
+                temp_cropped = crop_to_visible_alpha(obj_img)
+                temp_needs_grass = is_grass_object(temp_cropped)
+                
+                # RW/TW 구역에 배치하므로 잔디(초록색)가 묻은 객체는 무조건 스킵
+                if temp_needs_grass:
+                    continue
+                    
+                obj_cropped = temp_cropped
+                needs_grass_bg = temp_needs_grass  # 여기서는 항상 False가 됨
+                valid_obj_found = True
+                break
+                
+            if not valid_obj_found:
+                print(f"  [!] {zone_name} 구역에 적합한 '{cls_name}' 객체(잔디 없음)를 찾지 못해 생략합니다.")
+                continue
+
+            # 2. 객체 회전 및 마진 설정
             angle = random.uniform(0, 360)
             obj_rotated = rotate_image_with_alpha(obj_cropped, angle)
-            
-            # 회전 후 넓어진 투명 여백을 다시 타이트하게 잘라냄 (핵심!)
             obj_rotated_tight = crop_to_visible_alpha(obj_rotated)
+            
             obj_h, obj_w = obj_rotated_tight.shape[:2]
             
-            # 타이트한 객체 테두리 기준으로 margin_px(5cm) 적용
             min_x = x1 + margin_px
             min_y = y1 + margin_px
             max_x = x2 - obj_w - margin_px
@@ -185,36 +213,41 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
                 print(f"  [!] {zone_name} 구역은 너무 좁아 {cls_name} 배치가 생략됩니다.")
                 continue
                 
+            # 3. 위치 탐색 및 합성 (최대 100번 재시도)
             placed = False
-            for _ in range(50):
+            for _ in range(100):
                 rand_x = random.randint(min_x, max_x)
                 rand_y = random.randint(min_y, max_y)
                 current_box = (rand_x, rand_y, obj_w, obj_h)
                 
-                # cm 기반으로 계산된 obj_padding_px(2cm)를 사용해 겹침 확인
+                # 조건 A. 객체 간 겹침 방지 (패딩 적용)
                 overlap = any(is_overlapping(current_box, pb, obj_padding_px) for pb in placed_boxes)
+                if overlap: continue
                 
-                if not overlap:
-                    bg_img = overlay_transparent(bg_img, obj_rotated_tight, rand_x, rand_y)
-                    placed_boxes.append(current_box)
-                    placed = True
-                    
-                    class_id = YOLO_CLASS_MAP.get(cls_name, -1)
-                    if class_id != -1:
-                        # 중심 좌표 및 너비/높이 정규화(0~1)
-                        center_x = (rand_x + obj_w / 2.0) / bg_w
-                        center_y = (rand_y + obj_h / 2.0) / bg_h
-                        norm_w = obj_w / bg_w
-                        norm_h = obj_h / bg_h
-                        
-                        yolo_annotations.append(f"{class_id} {center_x:.6f} {center_y:.6f} {norm_w:.6f} {norm_h:.6f}")
-                    break
+                # 조건 B. 배경 일치 검사 (아스팔트 객체 -> 아스팔트 배경)
+                is_grass_bg = is_grass_background(bg_img, rand_x, rand_y, obj_w, obj_h)
+                if needs_grass_bg != is_grass_bg:
+                    continue  # 타겟 위치가 잔디라면 다른 위치 탐색
+                
+                # 모든 조건 통과 시 합성
+                bg_img = overlay_transparent(bg_img, obj_rotated_tight, rand_x, rand_y)
+                placed_boxes.append(current_box)
+                placed = True
+                
+                # YOLO Bounding Box 텍스트 기록
+                class_id = YOLO_CLASS_MAP.get(cls_name, -1)
+                if class_id != -1:
+                    center_x = (rand_x + obj_w / 2.0) / bg_w
+                    center_y = (rand_y + obj_h / 2.0) / bg_h
+                    norm_w = obj_w / bg_w
+                    norm_h = obj_h / bg_h
+                    yolo_annotations.append(f"{class_id} {center_x:.6f} {center_y:.6f} {norm_w:.6f} {norm_h:.6f}")
+                break
             
             if not placed:
-                print(f"  [!] {zone_name} 내에 {cls_name}을 배치할 빈 공간이 부족합니다.")
+                print(f"  [!] {zone_name} 내에 조건을 만족하는 빈 공간이 부족해 {cls_name} 배치를 생략합니다.")
 
     cv2.imwrite(str(image_output_path), bg_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-    
     with open(label_output_path, "w") as f:
         f.write("\n".join(yolo_annotations))
 
@@ -228,14 +261,13 @@ if __name__ == "__main__":
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
     
-    # 추출된 객체 이미지(png)들을 클래스별로 미리 로드
-    objects_dir = BASE_DIR / "generate_object_image/extracted_objects_advanced"
+    objects_dir = BASE_DIR / "generate_object_image/extracted_objects"
     object_pool = {}
     for cls_name in YOLO_CLASS_MAP.keys():
         cls_folder = objects_dir / cls_name
         if cls_folder.exists():
             object_pool[cls_name] = list(cls_folder.glob("*.png"))
-    
+            
     print(f"총 {num_images_to_generate}장의 조건부 증강 맵 생성을 시작합니다.\n")
     
     for i in range(1, num_images_to_generate + 1):
