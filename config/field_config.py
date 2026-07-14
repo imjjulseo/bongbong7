@@ -162,13 +162,17 @@ MISSION_TIME_LIMIT_SEC = 180
 # 아래 두 값만 "yolo"로 바꾸면 src/pipeline.py 수정 없이 백엔드가 전환됩니다.
 # (src/detection.py의 build_object_detector()/build_facility_classifier() 참고)
 DETECTOR_BACKEND = "yolo"         # "classical" | "yolo" - 폭파구/불발탄 통합 탐지 (확정 파이프라인: yolo)
-FACILITY_BACKEND = "classical"   # "classical" | "yolo" - 시설물 상태(normal/destroy/fire) 분류 (확정 파이프라인: yolo)
+FACILITY_BACKEND = "yolo"        # "classical" | "yolo" - 시설물 상태(normal/destroy/fire) 분류 (확정 파이프라인: yolo)
 
 # --- 폭파구/불발탄 YOLO 모델 설정 (3-A: zone 타일 배치 추론) ---
-# 2026-07-14: enhancement.py로 생성한 합성 데이터셋(100장, data/object.yaml)으로 yolo11n 학습.
+# 2026-07-14: 3rdtry.yolov11 + yolo_obj_dataset(실사진) + enhancement/generated_dataset(합성 100장)
+# 병합(총 114장, 88%가 합성)으로 학습한 yolo11n_object.pt는 val mAP50 0.98로 훈련 지표는 좋았지만
+# val이 대부분 합성 이미지라 실제 드론 영상에서는 활주로(RW) 탐지를 거의 놓치고 헛탐지도 발생함
+# (debug_visualize.py로 확인). 그래서 이전에 실사진 위주로 학습된 yolov8n_object_v2.pt로 되돌림 -
+# 이쪽이 실제 영상 기준으로 더 정확함이 확인됨. yolo11n_object.pt는 재학습 전까지 보류.
 # 클래스 순서는 알파벳순(0:big,1:cluster,2:dumb,3:medium,4:missile,5:small)을 그대로 따름.
 # 나중에 다른 학습 데이터셋을 쓸 경우 반드시 그 data.yaml의 names 순서와 다시 맞출 것.
-YOLO_OBJECT_WEIGHTS = "models/yolo11n_object.pt"
+YOLO_OBJECT_WEIGHTS = "models/yolov8n_object_v2.pt"
 YOLO_OBJECT_CONF_THRESHOLD = 0.4
 # 학습 클래스 idx -> (category, subtype[영문 코드=JSON 출력값]). data.yaml의 names 순서와 반드시 일치시킬 것.
 YOLO_OBJECT_CLASS_MAP = {
@@ -237,6 +241,11 @@ TRANSMIT_ORDER = [
 ]
 TRANSMIT_DUPLICATE_COUNT = 1   # 수신 유실 대비, 동일 JSON을 순차로 몇 번 중복 전송할지
 TRANSMIT_TIMEOUT_SEC = 5
+
+# 2026-07-14 현장 테스트로 확인: uxo_detect 보고는 서버가 최대 이 개수(구간)까지만 받고,
+# 초과하면 보고 전체를 HTTP 400으로 거부함("uxo_detect 보고는 6구간 이하로만 전송할 수
+# 있습니다"). 초과분은 신뢰도(confidence) 낮은 순으로 잘라서 보냄(pipeline.py 참고).
+UXO_DETECT_MAX_ENTRIES = 6
 
 
 # ---------------------------------------------------------

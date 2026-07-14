@@ -21,12 +21,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 import field_config as fc
 from calibration import FieldCalibrator
-from tiling import crop_zone_tiles
-from detection import build_object_detector, detect_zone_tiles
+from tiling import crop_zone_tiles, crop_facility_rois
+from detection import build_object_detector, detect_zone_tiles, build_facility_classifier
 from img_io import imread_safe, imwrite_safe
 
 GRID_COLOR = (110, 96, 80)
 DET_COLOR = (32, 107, 255)
+FACILITY_STATUS_COLOR = {
+    "normal": (60, 180, 60),
+    "destroy": (0, 140, 255),
+    "fire": (0, 0, 255),
+    "unconfirmed": (150, 150, 150),
+}
 
 
 def zone_pixel_rect(zone_name, px_per_cm):
@@ -46,6 +52,12 @@ def main():
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default="yolo")
     parser.add_argument("--conf", type=float, default=None,
                          help="탐지 conf threshold (생략 시 field_config 기본값)")
+    parser.add_argument("--facility-weights", type=str, default=None,
+                         help="시설물 분류 yolo 백엔드 가중치 경로 (생략 시 field_config.YOLO_FACILITY_WEIGHTS)")
+    parser.add_argument("--facility-backend", choices=["classical", "yolo"], default="yolo")
+    parser.add_argument("--facility-conf", type=float, default=None,
+                         help="시설물 분류 conf threshold (생략 시 field_config 기본값)")
+    parser.add_argument("--no-facility", action="store_true", help="시설물 상태 분류는 건너뛰고 폭파구/불발탄만 시각화")
     parser.add_argument("--output-dir", default="debug_viz")
     args = parser.parse_args()
 
@@ -67,6 +79,17 @@ def main():
 
     tiles = crop_zone_tiles(topview, px_per_cm)
     detections_by_zone = detect_zone_tiles(detector, tiles)
+
+    facility_status = {}
+    if not args.no_facility:
+        facility_kwargs = {}
+        if args.facility_weights:
+            facility_kwargs["weights_path"] = args.facility_weights
+        if args.facility_conf is not None:
+            facility_kwargs["conf_threshold"] = args.facility_conf
+        facility_classifier = build_facility_classifier(args.facility_backend, **facility_kwargs)
+        facility_rois = crop_facility_rois(topview, px_per_cm)
+        facility_status = facility_classifier.classify_frame_batch(facility_rois)
 
     canvas = topview.copy()
     for zone_name, bounds in fc.SEGMENTS.items():
@@ -93,6 +116,16 @@ def main():
             cv2.putText(canvas, label, (int(gx - r), int(gy - r - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, DET_COLOR, 1, cv2.LINE_AA)
             total += 1
             print(f"  {zone_name}: {det.category}/{det.subtype} conf={conf_str}")
+
+    if facility_status:
+        print("[시설물 상태]")
+        for slot, (status, conf) in facility_status.items():
+            x0, y0, x1, y1 = zone_pixel_rect(slot, px_per_cm)
+            color = FACILITY_STATUS_COLOR.get(status, FACILITY_STATUS_COLOR["unconfirmed"])
+            cv2.rectangle(canvas, (x0, y0), (x1, y1), color, 3)
+            label = f"{slot}: {status} {conf:.2f}"
+            cv2.putText(canvas, label, (x0 + 4, y0 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+            print(f"  {slot}: {status} conf={conf:.2f}")
 
     os.makedirs(args.output_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(args.image))[0]
