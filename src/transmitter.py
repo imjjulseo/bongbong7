@@ -19,6 +19,8 @@ import field_config as fc
 
 import requests
 
+_UNSET = object()  # endpoint 인자를 "안 넘김"(설정값 사용)과 "명시적 None"(전송 안 함)을 구분하기 위한 센티널
+
 
 def _send_one(key: str, payload: dict, endpoint: str, timeout: float):
     """단일 JSON을 fc.TRANSMIT_DUPLICATE_COUNT회 중복 전송. 각 시도 결과를 기록."""
@@ -34,14 +36,14 @@ def _send_one(key: str, payload: dict, endpoint: str, timeout: float):
     return {"key": key, "sent": True, "attempts": attempts}
 
 
-def transmit_all(outputs: dict, endpoint: str = None, order: list = None, timeout: float = None) -> dict:
+def transmit_all(outputs: dict, endpoint: str = _UNSET, order: list = None, timeout: float = None) -> dict:
     """
     outputs: {"start":..., "crater_detect":..., ..., "report":...} (pipeline.run()의 outputs)
-    endpoint: 생략 시 fc.DASHBOARD_ENDPOINT_URL 사용. None이면 실제 전송 없이 스텁 로그만 남김.
+    endpoint: 생략 시 fc.DASHBOARD_ENDPOINT_URL 사용. 명시적으로 None을 넘기면 실제 전송 없이 스텁 로그만 남김.
 
     반환: {"endpoint_configured": bool, "results": [{"key":..., "sent": bool, ...}, ...]}
     """
-    endpoint = endpoint if endpoint is not None else fc.DASHBOARD_ENDPOINT_URL
+    endpoint = fc.DASHBOARD_ENDPOINT_URL if endpoint is _UNSET else endpoint
     order = order or fc.TRANSMIT_ORDER
     timeout = timeout if timeout is not None else fc.TRANSMIT_TIMEOUT_SEC
 
