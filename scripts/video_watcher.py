@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 import field_config as fc
 from pipeline import MissionPipeline
 from img_io import imread_safe, imwrite_safe
+from transmitter import summarize_failures
 
 
 def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2):
@@ -104,11 +105,13 @@ class MissionState:
             mission_code=fc.MISSION_CODE, use_llm=not args.no_llm,
             output_dir=args.output,
             detector_backend=args.detector_backend, facility_backend=args.facility_backend,
-            object_weights=args.weights,
+            object_weights=args.weights, facility_weights=args.facility_weights,
         )
         # start.json은 특정 영상의 프레임 추출 완료 시점이 아니라, video_watcher.py 세션이
         # 시작되는 지금(첫 영상이 들어오기 전) 딱 1번만 생성/전송합니다.
-        self.pipeline.send_start(send_to_dashboard=args.send)
+        start_result = self.pipeline.send_start(send_to_dashboard=args.send)
+        for line in summarize_failures(start_result.get("transmit_result")):
+            print(f"[video_watcher] 전송 실패: {line}")
 
 
 def process_video(video_path: str, args, state: "MissionState"):
@@ -135,6 +138,8 @@ def process_video(video_path: str, args, state: "MissionState"):
           f"{'통과' if result['validation']['ok'] else '실패'} / 소요시간(초): {result['timing'].get('total')}")
     if not result["validation"]["ok"]:
         print("  오류:", result["validation"]["errors"])
+    for line in summarize_failures(result.get("transmit_result")):
+        print(f"[video_watcher] 전송 실패: {line}")
 
 
 class _VideoCreatedHandler:
@@ -145,15 +150,26 @@ class _VideoCreatedHandler:
         self.state = state
 
         class Handler(FileSystemEventHandlerBase):
-            def on_created(handler_self, event):
-                if event.is_directory:
-                    return
-                if not event.src_path.lower().endswith(fc.VIDEO_FILE_EXTENSIONS):
+            def _handle(handler_self, path):
+                if not path.lower().endswith(fc.VIDEO_FILE_EXTENSIONS):
                     return
                 try:
-                    process_video(event.src_path, self.args, self.state)
+                    process_video(path, self.args, self.state)
                 except Exception as e:
-                    print(f"[video_watcher] 처리 실패({event.src_path}): {e}")
+                    print(f"[video_watcher] 처리 실패({path}): {e}")
+
+            def on_created(handler_self, event):
+                # 영상이 바로 이 이름으로 생성되는 경우(단순 복사 등)
+                if event.is_directory:
+                    return
+                handler_self._handle(event.src_path)
+
+            def on_moved(handler_self, event):
+                # filerecvsender처럼 임시 파일명으로 받은 뒤 최종 파일명으로 rename하는 경우.
+                # Windows에서 rename은 on_created가 아니라 on_moved로 감지되므로 반드시 같이 처리해야 함.
+                if event.is_directory:
+                    return
+                handler_self._handle(event.dest_path)
 
         self.handler_instance = Handler()
 
@@ -213,8 +229,11 @@ def main():
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--weights", type=str, default=None,
-                         help="yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS 대신 쓸 가중치(.pt) 경로 "
-                              "(학습 중인 체크포인트를 바로 테스트할 때 등)")
+                         help="yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS 대신 쓸 폭파구/불발탄 탐지 "
+                              "가중치(.pt) 경로 (학습 중인 체크포인트를 바로 테스트할 때 등)")
+    parser.add_argument("--facility-weights", type=str, default=None,
+                         help="yolo 백엔드일 때 field_config.YOLO_FACILITY_WEIGHTS 대신 쓸 시설물 상태 분류 "
+                              "가중치(.pt) 경로")
     args = parser.parse_args()
 
     if args.video_file:

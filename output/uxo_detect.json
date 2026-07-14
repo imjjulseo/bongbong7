@@ -2,32 +2,28 @@
   "mission_code": "SHUUFT9A",
   "uxo_detect": [
     {
-      "zone": "RW-05",
+      "zone": "RW-03",
       "type": "dumb"
     },
     {
-      "zone": "TW-A1",
-      "type": "missile"
-    },
-    {
-      "zone": "TW-A4",
-      "type": "missile"
-    },
-    {
-      "zone": "TW-B1",
+      "zone": "TW-B2",
       "type": "dumb"
     },
     {
-      "zone": "TW-B4",
-      "type": "cluster"
+      "zone": "TW-B3",
+      "type": "missile"
     },
     {
       "zone": "RW-03",
       "type": "cluster"
     },
     {
-      "zone": "RW-06",
+      "zone": "TW-A2",
       "type": "dumb"
+    },
+    {
+      "zone": "TW-B3",
+      "type": "missile"
     }
   ]
 }

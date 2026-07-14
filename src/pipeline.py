@@ -231,13 +231,24 @@ class MissionPipeline:
         uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
         self._toc("uxo_postprocess")
 
+        # 서버가 uxo_detect 보고를 fc.UXO_DETECT_MAX_ENTRIES(구간)까지만 받음(초과 시 보고 전체를
+        # 거부) - 신뢰도 낮은 것부터 잘라서 최대 개수 이내로 맞춤. uxo_count도 잘린 목록 기준으로
+        # 다시 세야 validator의 "uxo_count <= uxo_detect 총 개수" 검증과 어긋나지 않음.
+        uxo_deduped_sorted = sorted(uxo_deduped, key=lambda u: u.get("confidence", 0.0), reverse=True)
+        if len(uxo_deduped_sorted) > fc.UXO_DETECT_MAX_ENTRIES:
+            dropped = uxo_deduped_sorted[fc.UXO_DETECT_MAX_ENTRIES:]
+            uxo_deduped_sorted = uxo_deduped_sorted[:fc.UXO_DETECT_MAX_ENTRIES]
+            print(f"[pipeline] uxo_detect: 서버 제한(최대 {fc.UXO_DETECT_MAX_ENTRIES}구간)으로 "
+                  f"신뢰도 낮은 {len(dropped)}건 제외: "
+                  f"{[(d['segment'], d['type'], d.get('confidence')) for d in dropped]}")
+
         uxo_list_out = [
-            {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped
+            {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped_sorted
         ]
         outputs["uxo_detect"] = schemas.build_uxo_detect_json(self.mission_code, uxo_list_out)
         saved_files.append(self._save("uxo_detect.json", outputs["uxo_detect"]))
 
-        runway_uxo_count = uxa.count_uxo_on_runway(uxo_deduped)
+        runway_uxo_count = uxa.count_uxo_on_runway(uxo_deduped_sorted)
         outputs["uxo_count"] = schemas.build_uxo_count_json(self.mission_code, runway_uxo_count)
         saved_files.append(self._save("uxo_count.json", outputs["uxo_count"]))
 

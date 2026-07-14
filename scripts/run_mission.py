@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 from pipeline import MissionPipeline
+from transmitter import summarize_failures
 import field_config as fc
 from img_io import imread_safe
 
@@ -79,7 +80,7 @@ def main():
                                 output_dir=output_dir,
                                 detector_backend=args.detector_backend,
                                 facility_backend=args.facility_backend)
-    pipeline.send_start(send_to_dashboard=args.send)
+    start_result = pipeline.send_start(send_to_dashboard=args.send)
     result = pipeline.run(frames, send_to_dashboard=args.send)
 
     print(f"[3/3] 완료! 결과 저장 위치: {output_dir}\n")
@@ -89,6 +90,10 @@ def main():
         print("  오류:", result["validation"]["errors"])
     if result["validation"]["warnings"]:
         print("  경고:", result["validation"]["warnings"])
+    transmit_failures = (summarize_failures(start_result.get("transmit_result"))
+                         + summarize_failures(result.get("transmit_result")))
+    if transmit_failures:
+        print("전송 실패:", transmit_failures)
     print("=" * 60)
     print("소요시간(초):", json.dumps(result["timing"], ensure_ascii=False, indent=2))
     print("=" * 60)

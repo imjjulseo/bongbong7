@@ -2,15 +2,51 @@
   "mission_code": "SHUUFT9A",
   "crater_detect": [
     {
-      "zone": "RW-02",
+      "zone": "TW-B2",
+      "size": "small"
+    },
+    {
+      "zone": "RW-08",
+      "size": "small"
+    },
+    {
+      "zone": "TW-A5",
+      "size": "big"
+    },
+    {
+      "zone": "RW-01",
       "size": "medium"
     },
     {
-      "zone": "RW-04",
+      "zone": "RW-03",
+      "size": "small"
+    },
+    {
+      "zone": "RW-05",
       "size": "medium"
     },
     {
-      "zone": "RW-06",
+      "zone": "RW-09",
+      "size": "medium"
+    },
+    {
+      "zone": "RW-09",
+      "size": "medium"
+    },
+    {
+      "zone": "RW-10",
+      "size": "medium"
+    },
+    {
+      "zone": "RW-10",
+      "size": "medium"
+    },
+    {
+      "zone": "TW-A4",
+      "size": "small"
+    },
+    {
+      "zone": "TW-B3",
       "size": "medium"
     },
     {
@@ -18,8 +54,8 @@
       "size": "small"
     },
     {
-      "zone": "TW-B5",
-      "size": "big"
+      "zone": "TW-B3",
+      "size": "medium"
     }
   ]
 }

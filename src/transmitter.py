@@ -38,9 +38,11 @@ def _send_one(key: str, payload: dict, url: str, timeout: float):
                 files={"file": (filename, body, "application/json")},
                 timeout=timeout,
             )
-            attempts.append({
-                "attempt": attempt, "ok": resp.ok, "status_code": resp.status_code,
-            })
+            attempt_record = {"attempt": attempt, "ok": resp.ok, "status_code": resp.status_code}
+            if not resp.ok:
+                # 4xx는 보통 서버가 왜 거부했는지 본문에 이유를 담아 돌려주므로 같이 남겨야 원인 파악이 됨.
+                attempt_record["response_body"] = resp.text[:500]
+            attempts.append(attempt_record)
         except Exception as e:
             attempts.append({"attempt": attempt, "ok": False, "error": str(e)})
     return {"key": key, "sent": True, "attempts": attempts}
@@ -75,3 +77,27 @@ def transmit_all(outputs: dict, endpoint: str = _UNSET, order: list = None, time
         results.append(_send_one(key, outputs[key], url, timeout))
 
     return {"endpoint_configured": True, "results": results}
+
+
+def summarize_failures(transmit_result: dict) -> list:
+    """transmit_all() 반환값에서 실패한 전송만 사람이 읽을 수 있는 문자열로 뽑아냄.
+    호출부(video_watcher.py 등)가 이걸 출력해야 전송 실패가 콘솔에 남는다 -
+    transmit_all()은 실패를 예외로 던지지 않고 attempts 기록에만 남기기 때문."""
+    if not transmit_result:
+        return []
+    lines = []
+    for r in transmit_result.get("results", []):
+        key = r.get("key")
+        if not r.get("sent"):
+            lines.append(f"{key}.json: 전송 안 됨({r.get('reason', '알 수 없음')})")
+            continue
+        for a in r.get("attempts", []):
+            if not a.get("ok"):
+                if a.get("error"):
+                    detail = a["error"]
+                else:
+                    detail = f"HTTP {a.get('status_code')}"
+                    if a.get("response_body"):
+                        detail += f" - {a['response_body']}"
+                lines.append(f"{key}.json (시도 {a['attempt']}/{max(1, fc.TRANSMIT_DUPLICATE_COUNT)}): {detail}")
+    return lines
