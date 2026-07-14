@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 from pipeline import MissionPipeline
 import field_config as fc
+from img_io import imread_safe
 
 
 def load_frames_from_dir(images_dir):
@@ -33,7 +34,7 @@ def load_frames_from_dir(images_dir):
     files = sorted([f for f in os.listdir(images_dir) if f.lower().endswith(exts)])
     frames = []
     for f in files:
-        img = cv2.imread(os.path.join(images_dir, f))
+        img = imread_safe(os.path.join(images_dir, f))
         if img is not None:
             frames.append(img)
     return frames
@@ -93,17 +94,15 @@ def main():
 
     print("\n[핵심 결과 요약]")
     outputs = result["outputs"]
-    print(f"  - 폭파구 총 개수: {outputs['crater_detect']['crater_count_total']}")
-    print(f"  - 활주로 폭파구 개수: {outputs['crater_count']['runway_crater_count']}")
-    print(f"  - 활주로 가용길이: {outputs['runway_status']['runway_available_length_m']} m")
-    print(f"  - 최장 가용 구간: {outputs['runway_status']['longest_available_run']}")
-    print(f"  - 막힌 구간: {outputs['runway_status']['blocked_segments']}")
-    print(f"  - 불발탄 총 개수: {outputs['uxo_detect']['uxo_count_total']}")
-    print(f"  - 활주로 불발탄 개수: {outputs['uxo_count']['runway_uxo_count']}")
+    print(f"  - 폭파구 총 개수: {len(outputs['crater_detect']['crater_detect'])}")
+    print(f"  - 활주로 폭파구 개수: {outputs['crater_count']['crater_count']}")
+    print(f"  - 활주로 가용길이: {outputs['runway_status']['runway_status']} cm")
+    print(f"  - 불발탄 총 개수: {len(outputs['uxo_detect']['uxo_detect'])}")
+    print(f"  - 활주로 불발탄 개수: {outputs['uxo_count']['uxo_count']}")
     print(f"  - 시설물 상태:")
-    for f in outputs["facility_status"]["facilities"]:
-        print(f"      {f['slot']} ({f['type']}): {f['status']} (신뢰도 {f['confidence']})")
-    print(f"\n  - 보고서({result['report_source']}):\n    {outputs['report']['report_text']}")
+    for f in outputs["facility_status"]["facility_status"]:
+        print(f"      {f['zone']}: {f['status']}")
+    print(f"\n  - 보고서({result['report_source']}):\n    {outputs['report']['report']}")
 
 
 if __name__ == "__main__":

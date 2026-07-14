@@ -1,0 +1,22 @@
+{
+  "mission_code": "LKUSDC8O",
+  "timestamp": "2026-07-14T02:25:18.093782+00:00",
+  "blocked_segments": [],
+  "longest_available_run": {
+    "segments": [
+      "RW-01",
+      "RW-02",
+      "RW-03",
+      "RW-04",
+      "RW-05",
+      "RW-06",
+      "RW-07",
+      "RW-08",
+      "RW-09",
+      "RW-10"
+    ],
+    "length_m": 3000.0
+  },
+  "runway_available_length_m": 3000.0,
+  "runway_usable": true
+}

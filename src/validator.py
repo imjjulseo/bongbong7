@@ -35,50 +35,50 @@ def validate_all(outputs: dict, raise_on_error: bool = False):
     if len(codes) == 1 and list(codes)[0] != fc.MISSION_CODE:
         warnings.append(f"mission_code가 field_config.MISSION_CODE와 다릅니다: {codes}")
 
-    # 2. crater_count == crater_detect 총 개수
+    # 2. crater_count <= crater_detect 총 개수
     if "crater_detect" in outputs and "crater_count" in outputs:
-        detect_total = outputs["crater_detect"].get("crater_count_total", None)
-        runway_count = outputs["crater_count"].get("runway_crater_count", None)
-        if detect_total is not None and runway_count is not None and runway_count > detect_total:
+        detect_total = len(outputs["crater_detect"].get("crater_detect", []))
+        runway_count = outputs["crater_count"].get("crater_count", None)
+        if runway_count is not None and runway_count > detect_total:
             errors.append(
                 f"활주로 폭파구 개수({runway_count})가 전체 탐지 개수({detect_total})보다 많을 수 없습니다."
             )
 
     # 3. 시설물 6개 슬롯 확인 (누락 방지 핵심 체크)
     if "facility_status" in outputs:
-        facilities = outputs["facility_status"].get("facilities", [])
-        slots_present = {f["slot"] for f in facilities}
-        missing = set(fc.FACILITY_SLOTS) - slots_present
+        facilities = outputs["facility_status"].get("facility_status", [])
+        zones_present = {f["zone"] for f in facilities}
+        missing = set(fc.FACILITY_SLOTS) - zones_present
         if missing:
             errors.append(f"시설물 슬롯 누락: {sorted(missing)}")
-        unconfirmed = [f["slot"] for f in facilities if f.get("status") == "unconfirmed"]
+        unconfirmed = [f["zone"] for f in facilities if f.get("status") == "unconfirmed"]
         if unconfirmed:
             warnings.append(f"미확인(unconfirmed) 상태인 시설물: {unconfirmed} (재정찰 권장)")
 
     # 4. uxo_count <= uxo_detect 총 개수
     if "uxo_detect" in outputs and "uxo_count" in outputs:
-        detect_total = outputs["uxo_detect"].get("uxo_count_total", None)
-        runway_count = outputs["uxo_count"].get("runway_uxo_count", None)
-        if detect_total is not None and runway_count is not None and runway_count > detect_total:
+        detect_total = len(outputs["uxo_detect"].get("uxo_detect", []))
+        runway_count = outputs["uxo_count"].get("uxo_count", None)
+        if runway_count is not None and runway_count > detect_total:
             errors.append(
                 f"활주로 불발탄 개수({runway_count})가 전체 탐지 개수({detect_total})보다 많을 수 없습니다."
             )
 
-    # 5. 활주로 가용길이 범위 체크 (0 ~ 필드 전체길이*스케일 이내인지)
+    # 5. 활주로 가용길이 범위 체크 (0 ~ 필드 전체길이*스케일(cm) 이내인지)
     if "runway_status" in outputs:
-        max_possible_m = fc.FIELD_WIDTH_CM * fc.REAL_METERS_PER_MODEL_CM
-        avail = outputs["runway_status"].get("runway_available_length_m", None)
-        if avail is not None and not (0 <= avail <= max_possible_m):
-            errors.append(f"활주로 가용길이({avail}m)가 물리적으로 불가능한 범위입니다.")
+        max_possible_cm = fc.FIELD_WIDTH_CM * fc.REAL_METERS_PER_MODEL_CM * 100
+        avail = outputs["runway_status"].get("runway_status", None)
+        if avail is not None and not (0 <= avail <= max_possible_cm):
+            errors.append(f"활주로 가용길이({avail}cm)가 물리적으로 불가능한 범위입니다.")
 
     # 6. report.json 텍스트 비어있는지 + 글자수 제약(50~100자) 확인
     if "report" in outputs:
-        text = outputs["report"].get("report_text", "")
+        text = outputs["report"].get("report", "")
         if not text or len(text.strip()) < 5:
-            errors.append("report_text가 비어있거나 너무 짧습니다.")
+            errors.append("report가 비어있거나 너무 짧습니다.")
         elif not (fc.REPORT_MIN_CHARS <= len(text.strip()) <= fc.REPORT_MAX_CHARS):
             warnings.append(
-                f"report_text 글자수({len(text.strip())})가 규정 범위"
+                f"report 글자수({len(text.strip())})가 규정 범위"
                 f"({fc.REPORT_MIN_CHARS}~{fc.REPORT_MAX_CHARS}자)를 벗어났습니다."
             )
 

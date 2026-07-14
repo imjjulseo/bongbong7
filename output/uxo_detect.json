@@ -1,27 +1,13 @@
 {
-  "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-14T00:48:13.299476+00:00",
-  "uxo_count_total": 2,
-  "uxos": [
+  "mission_code": "SHUUFT9A",
+  "uxo_detect": [
     {
-      "id": "UXO-001",
-      "segment": "RW-09",
-      "type": "missile",
-      "center_world_cm": [
-        440.1,
-        200.7
-      ],
-      "confidence": 0.92
+      "zone": "RW-09",
+      "type": "missile"
     },
     {
-      "id": "UXO-002",
-      "segment": "TW-B2",
-      "type": "dumb",
-      "center_world_cm": [
-        150.1,
-        280.1
-      ],
-      "confidence": 0.95
+      "zone": "TW-B2",
+      "type": "dumb"
     }
   ]
 }

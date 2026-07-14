@@ -1,0 +1,43 @@
+{
+  "mission_code": "LKUSDC8O",
+  "timestamp": "2026-07-14T02:25:18.093782+00:00",
+  "facility_count": 6,
+  "facilities": [
+    {
+      "slot": "FA-01",
+      "type": "control_tower",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    },
+    {
+      "slot": "FA-02",
+      "type": "radar",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    },
+    {
+      "slot": "FA-03",
+      "type": "hangar",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    },
+    {
+      "slot": "FA-04",
+      "type": "building_1",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    },
+    {
+      "slot": "FA-05",
+      "type": "building_2",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    },
+    {
+      "slot": "FA-06",
+      "type": "weapon_depot",
+      "status": "unconfirmed",
+      "confidence": 0.0
+    }
+  ]
+}

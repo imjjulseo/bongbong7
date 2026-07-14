@@ -2,102 +2,76 @@
 """
 schemas.py
 ==========
-대회에서 요구하는 8개 전송 JSON 파일(mission_code 표 기준)의 '틀'을 정의합니다.
+대회 측이 제공한 8개 전송 JSON 템플릿 형식 그대로 '틀'을 정의합니다.
 파일명 <-> 임무명 매핑:
   1. start.json            준비단계 (미션코드)
   2. crater_detect.json    폭파구 크기/위치 탐지
   3. crater_count.json     활주로 폭파구 개수
-  4. runway_status.json    활주로 가용길이
+  4. runway_status.json    활주로 가용길이 (cm)
   5. facility_status.json  시설물 상태
   6. uxo_detect.json       불발탄 위치 및 종류
   7. uxo_count.json        활주로 불발탄 개수
   8. report.json           LLM 기반 작전상황 보고
+
+주의: timestamp 등 부가 필드는 넣지 않습니다(템플릿에 없는 필드는 전부 제외).
 """
-from datetime import datetime, timezone
-
-
-def _now_iso():
-    return datetime.now(timezone.utc).isoformat()
 
 
 def build_start_json(mission_code: str) -> dict:
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
     }
 
 
 def build_crater_detect_json(mission_code: str, craters: list) -> dict:
-    """
-    craters: [{"id": str, "segment": str, "size_class": "big|medium|small",
-               "center_world_cm": [x,y], "diameter_m": float}, ...]
-    """
+    """craters: [{"zone": str, "size": "big|medium|small"}, ...]"""
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "crater_count_total": len(craters),
-        "craters": craters,
+        "crater_detect": craters,
     }
 
 
-def build_crater_count_json(mission_code: str, runway_crater_count: int) -> dict:
+def build_crater_count_json(mission_code: str, crater_count: int) -> dict:
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "runway_crater_count": runway_crater_count,
+        "crater_count": crater_count,
     }
 
 
-def build_runway_status_json(mission_code: str, longest_segment: dict,
-                              blocked_segments: list, available_length_m: float) -> dict:
+def build_runway_status_json(mission_code: str, runway_status_cm) -> dict:
+    """runway_status_cm: 활주로 가용길이 (실좌표 cm 단위)"""
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "blocked_segments": blocked_segments,
-        "longest_available_run": longest_segment,   # {"segments":[...], "length_m": float}
-        "runway_available_length_m": available_length_m,
-        "runway_usable": available_length_m > 0,
+        "runway_status": runway_status_cm,
     }
 
 
 def build_facility_status_json(mission_code: str, facilities: list) -> dict:
-    """
-    facilities: [{"slot": "FA-01", "type": "control_tower", "status": "normal|destroy|fire|unconfirmed"}, ...]
-    반드시 6개 슬롯이 모두 존재해야 함 (누락 방지)
-    """
+    """facilities: [{"zone": "FA-01", "status": "normal|destroy|fire"}, ...]
+    반드시 6개 슬롯이 모두 존재해야 함 (누락 방지)"""
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "facility_count": len(facilities),
-        "facilities": facilities,
+        "facility_status": facilities,
     }
 
 
 def build_uxo_detect_json(mission_code: str, uxos: list) -> dict:
-    """
-    uxos: [{"id": str, "segment": str, "type": "missile|dumb|cluster",
-            "center_world_cm": [x,y], "confidence": float}, ...]
-    """
+    """uxos: [{"zone": str, "type": "missile|dumb|cluster"}, ...]"""
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "uxo_count_total": len(uxos),
-        "uxos": uxos,
+        "uxo_detect": uxos,
     }
 
 
-def build_uxo_count_json(mission_code: str, runway_uxo_count: int) -> dict:
+def build_uxo_count_json(mission_code: str, uxo_count: int) -> dict:
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "runway_uxo_count": runway_uxo_count,
+        "uxo_count": uxo_count,
     }
 
 
-def build_report_json(mission_code: str, report_text: str, summary: dict) -> dict:
+def build_report_json(mission_code: str, report_text: str) -> dict:
     return {
         "mission_code": mission_code,
-        "timestamp": _now_iso(),
-        "report_text": report_text,
-        "summary": summary,
+        "report": report_text,
     }

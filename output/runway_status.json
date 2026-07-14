@@ -1,18 +1,4 @@
 {
-  "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-14T00:48:13.299476+00:00",
-  "blocked_segments": [
-    "RW-03",
-    "RW-07"
-  ],
-  "longest_available_run": {
-    "segments": [
-      "RW-04",
-      "RW-05",
-      "RW-06"
-    ],
-    "length_m": 900.0
-  },
-  "runway_available_length_m": 900.0,
-  "runway_usable": true
+  "mission_code": "SHUUFT9A",
+  "runway_status": 90000
 }

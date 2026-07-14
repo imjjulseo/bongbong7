@@ -1,22 +1,4 @@
 {
-  "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-14T00:48:13.299476+00:00",
-  "report_text": "활주로 가용길이 900.0m로 이착륙 가능, 폭파구 2개(활주로 2), 불발탄 2개(활주로 1), 시설물 파손 1·화재 1·미확인 0건.",
-  "summary": {
-    "crater_count_total": 2,
-    "runway_crater_count": 2,
-    "runway_available_length_m": 900.0,
-    "runway_blocked_segments": [
-      "RW-03",
-      "RW-07"
-    ],
-    "facility_damage_summary": {
-      "normal": 4,
-      "destroy": 1,
-      "fire": 1,
-      "unconfirmed": 0
-    },
-    "uxo_count_total": 2,
-    "uxo_runway_count": 1
-  }
+  "mission_code": "SHUUFT9A",
+  "report": "활주로 가용길이 900.0m로 이착륙 가능, 폭파구 2개(활주로 2), 불발탄 2개(활주로 1), 시설물 파손 1·화재 1·미확인 0건."
 }

@@ -1,27 +1,13 @@
 {
-  "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-14T00:48:13.298474+00:00",
-  "crater_count_total": 2,
-  "craters": [
+  "mission_code": "SHUUFT9A",
+  "crater_detect": [
     {
-      "id": "CR-001",
-      "segment": "RW-03",
-      "size_class": "medium",
-      "center_world_cm": [
-        124.9,
-        200.1
-      ],
-      "diameter_m": 0.15
+      "zone": "RW-03",
+      "size": "medium"
     },
     {
-      "id": "CR-002",
-      "segment": "RW-07",
-      "size_class": "big",
-      "center_world_cm": [
-        325.0,
-        199.9
-      ],
-      "diameter_m": 0.18
+      "zone": "RW-07",
+      "size": "big"
     }
   ]
 }

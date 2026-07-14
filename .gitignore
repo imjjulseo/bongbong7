@@ -1,9 +1,12 @@
 
 myenv/
+__pycache__/
+video_input/*
+video_input_building/*
+test_images/*_frame_*.png
 
 # 모델 가중치 / 학습 산출물 / 데이터셋 (용량이 커서 저장소에 올리지 않음)
 *.pt
 models/
 runs/
 debug_viz/
-__pycache__/
