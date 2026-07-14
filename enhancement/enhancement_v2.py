@@ -9,9 +9,11 @@ import os
 # 1. 경로 및 설정
 # ---------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 import field_config as fc
+from img_io import imread_safe, imwrite_safe
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -131,7 +133,7 @@ def is_overlapping(box1, box2, padding_px):
 # ---------------------------------------------------------
 def generate_constrained_map(image_output_path, label_output_path, object_pool):
     input_bg_path = BASE_DIR / "empty_calibrated.png"
-    bg_img = cv2.imread(str(input_bg_path))
+    bg_img = imread_safe(str(input_bg_path))
     
     if bg_img is None:
         print(f"배경 이미지를 찾을 수 없습니다: {input_bg_path}")
@@ -178,7 +180,7 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
             # 1. 객체 선별 과정 (최대 30번 재시도)
             for _ in range(30):
                 obj_path = random.choice(object_pool[cls_name])
-                obj_img = cv2.imread(str(obj_path), cv2.IMREAD_UNCHANGED)
+                obj_img = imread_safe(str(obj_path), cv2.IMREAD_UNCHANGED)
                 if obj_img is None: continue
                     
                 temp_cropped = crop_to_visible_alpha(obj_img)
@@ -247,7 +249,7 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
             if not placed:
                 print(f"  [!] {zone_name} 내에 조건을 만족하는 빈 공간이 부족해 {cls_name} 배치를 생략합니다.")
 
-    cv2.imwrite(str(image_output_path), bg_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    imwrite_safe(str(image_output_path), bg_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
     with open(label_output_path, "w") as f:
         f.write("\n".join(yolo_annotations))
 
