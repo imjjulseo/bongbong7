@@ -13,7 +13,7 @@ import field_config as fc
 
 def build_facility_report(detections_by_slot: dict):
     """
-    detections_by_slot: {"FA-01": {"status": "정상", "confidence": 0.9}, ...}
+    detections_by_slot: {"FA-01": {"status": "normal", "confidence": 0.9}, ...}
                          탐지 못한 슬롯은 딕셔너리에 아예 없어도 됨.
 
     반환: 6개 슬롯이 항상 채워진 리스트
@@ -23,11 +23,11 @@ def build_facility_report(detections_by_slot: dict):
     for slot in fc.FACILITY_SLOTS:
         facility_type = fc.FACILITY_TYPE_BY_SLOT[slot]
         if slot in detections_by_slot:
-            status = detections_by_slot[slot].get("status", "미확인")
+            status = detections_by_slot[slot].get("status", "unconfirmed")
             confidence = detections_by_slot[slot].get("confidence", 0.0)
         else:
-            # 탐지 실패 -> 슬롯을 비우지 않고 '미확인'으로 명시 (누락 방지 핵심)
-            status = "미확인"
+            # 탐지 실패 -> 슬롯을 비우지 않고 'unconfirmed'로 명시 (누락 방지 핵심)
+            status = "unconfirmed"
             confidence = 0.0
 
         facilities.append({
@@ -40,8 +40,8 @@ def build_facility_report(detections_by_slot: dict):
 
 
 def summarize_damage(facilities: list):
-    """전체 시설물 중 파손/화재/미확인 개수 요약 (LLM 보고서 생성용 보조 통계)"""
-    counts = {"정상": 0, "파손": 0, "화재": 0, "미확인": 0}
+    """전체 시설물 중 destroy/fire/unconfirmed 개수 요약 (LLM 보고서 생성용 보조 통계)"""
+    counts = {"normal": 0, "destroy": 0, "fire": 0, "unconfirmed": 0}
     for f in facilities:
         counts[f["status"]] = counts.get(f["status"], 0) + 1
     return counts

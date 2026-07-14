@@ -147,7 +147,7 @@ def draw_aruco_markers(canvas, aruco_dict):
     return canvas
 
 
-def draw_crater(canvas, segment_name, size_class="중형"):
+def draw_crater(canvas, segment_name, size_class="medium"):
     """지정 구간 중앙에 검정 불규칙 blob(폭파구)을 그림 (실측 모형 사진과 이미 유사해 그대로 유지)"""
     b = fc.SEGMENTS[segment_name]
     cx_world = (b["x_min"] + b["x_max"]) / 2
@@ -240,7 +240,7 @@ def _draw_submunition(canvas, cx, cy, w_px, d_px, color=(34, 44, 34)):
         cv2.circle(canvas, (bx, by), bump_r, bump_color, -1)
 
 
-def draw_uxo(canvas, segment_name, uxo_type="자탄", offset_cm=(0, 0)):
+def draw_uxo(canvas, segment_name, uxo_type="cluster", offset_cm=(0, 0)):
     """지정 구간에 종류별로 구분되는 불발탄 형태를 그림"""
     b = fc.SEGMENTS[segment_name]
     cx_world = (b["x_min"] + b["x_max"]) / 2 + offset_cm[0]
@@ -251,11 +251,11 @@ def draw_uxo(canvas, segment_name, uxo_type="자탄", offset_cm=(0, 0)):
     w_px = max(4, int((dims["w"] / 10.0) * PX_PER_CM))
     d_px = max(4, int((dims["d"] / 10.0) * PX_PER_CM))
 
-    if uxo_type == "미사일":
+    if uxo_type == "missile":
         _draw_missile(canvas, cx, cy, w_px, d_px)
-    elif uxo_type == "포탄":
+    elif uxo_type == "dumb":
         _draw_mortar_round(canvas, cx, cy, w_px, d_px)
-    else:  # 자탄
+    else:  # cluster
         _draw_submunition(canvas, cx, cy, w_px, d_px)
 
     return cx_world, cy_world
@@ -362,27 +362,27 @@ def _draw_damage_overlay(canvas, p1, p2):
         cv2.circle(canvas, (cx, cy), r, (12, 12, 12), -1)
 
 
-def draw_facility_state(canvas, slot, state="정상"):
+def draw_facility_state(canvas, slot, state="normal"):
     """FA 슬롯에 시설물 종류별 아이콘을 그리고, 상태에 따라 화재/파손 오버레이를 얹음"""
     b = fc.SEGMENTS[slot]
     p1 = world_to_canvas(b["x_min"] + 5, b["y_min"] + 5)
     p2 = world_to_canvas(b["x_max"] - 5, b["y_max"] - 5)
     facility_type = fc.FACILITY_TYPE_BY_SLOT[slot]
 
-    if facility_type == "관제탑":
+    if facility_type == "control_tower":
         _draw_control_tower(canvas, p1, p2)
-    elif facility_type == "관제레이더":
+    elif facility_type == "radar":
         _draw_radar(canvas, p1, p2)
-    elif facility_type == "격납고":
+    elif facility_type == "hangar":
         _draw_hangar(canvas, p1, p2)
-    elif facility_type == "무기고":
+    elif facility_type == "weapon_depot":
         _draw_generic_building(canvas, p1, p2, roof_color=(115, 115, 130))
     else:
         _draw_generic_building(canvas, p1, p2, roof_color=(170, 170, 170))
 
-    if state == "화재":
+    if state == "fire":
         _draw_fire_overlay(canvas, p1, p2)
-    elif state == "파손":
+    elif state == "destroy":
         _draw_damage_overlay(canvas, p1, p2)
 
     cv2.putText(canvas, f"{slot}:{state}", (p1[0], p2[1] + 14),
@@ -400,21 +400,21 @@ def generate_scene(seed=0, fire_flicker_phase=0.0):
     draw_field_base(canvas)
 
     # ---- 시나리오 배치 ----
-    draw_crater(canvas, "RW-03", "중형")
-    draw_crater(canvas, "RW-07", "대형")
+    draw_crater(canvas, "RW-03", "medium")
+    draw_crater(canvas, "RW-07", "big")
 
-    draw_uxo(canvas, "RW-05", "자탄")
-    draw_uxo(canvas, "TW-B2", "포탄")
-    draw_uxo(canvas, "RW-09", "미사일", offset_cm=(15, 0))
+    draw_uxo(canvas, "RW-05", "cluster")
+    draw_uxo(canvas, "TW-B2", "dumb")
+    draw_uxo(canvas, "RW-09", "missile", offset_cm=(15, 0))
 
-    draw_facility_state(canvas, "FA-01", "정상")
+    draw_facility_state(canvas, "FA-01", "normal")
     # 화재는 깜빡임을 흉내내기 위해 프레임마다 밝기를 살짝 변화
-    fire_state = "화재"
+    fire_state = "fire"
     draw_facility_state(canvas, "FA-02", fire_state)
-    draw_facility_state(canvas, "FA-03", "파손")
-    draw_facility_state(canvas, "FA-04", "정상")
-    draw_facility_state(canvas, "FA-05", "정상")
-    draw_facility_state(canvas, "FA-06", "정상")
+    draw_facility_state(canvas, "FA-03", "destroy")
+    draw_facility_state(canvas, "FA-04", "normal")
+    draw_facility_state(canvas, "FA-05", "normal")
+    draw_facility_state(canvas, "FA-06", "normal")
 
     draw_aruco_markers(canvas, aruco_dict)
 

@@ -29,7 +29,7 @@ def build_start_json(mission_code: str) -> dict:
 
 def build_crater_detect_json(mission_code: str, craters: list) -> dict:
     """
-    craters: [{"id": str, "segment": str, "size_class": "대형|중형|소형",
+    craters: [{"id": str, "segment": str, "size_class": "big|medium|small",
                "center_world_cm": [x,y], "diameter_m": float}, ...]
     """
     return {
@@ -62,7 +62,7 @@ def build_runway_status_json(mission_code: str, longest_segment: dict,
 
 def build_facility_status_json(mission_code: str, facilities: list) -> dict:
     """
-    facilities: [{"slot": "FA-01", "type": "관제탑", "status": "정상|파손|화재|미확인"}, ...]
+    facilities: [{"slot": "FA-01", "type": "control_tower", "status": "normal|destroy|fire|unconfirmed"}, ...]
     반드시 6개 슬롯이 모두 존재해야 함 (누락 방지)
     """
     return {
@@ -75,7 +75,7 @@ def build_facility_status_json(mission_code: str, facilities: list) -> dict:
 
 def build_uxo_detect_json(mission_code: str, uxos: list) -> dict:
     """
-    uxos: [{"id": str, "segment": str, "type": "미사일|포탄|자탄",
+    uxos: [{"id": str, "segment": str, "type": "missile|dumb|cluster",
             "center_world_cm": [x,y], "confidence": float}, ...]
     """
     return {

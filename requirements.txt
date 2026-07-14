@@ -1,7 +1,11 @@
 numpy>=1.24
 opencv-contrib-python>=4.8   # cv2.aruco 포함 버전 (opencv-python 단독은 aruco 미포함일 수 있음)
 requests>=2.31
+watchdog>=3.0                # 1단계: 영상 입력 폴더 감시(scripts/video_watcher.py)
 
-# 선택 (실전 확장용, 지금 코드는 없어도 동작함)
-# ultralytics        # YOLO 학습 모델을 붙이려면 설치 (대회 PC에 GPU 있고 로컬 설치 가능할 때)
+# 확정 파이프라인은 YOLO11n(3-A)/YOLO11n-cls(3-B) 배치 추론을 기본 백엔드로 사용합니다.
+# 가중치가 아직 없는 개발/합성테스트 단계에서는 DETECTOR_BACKEND="classical"로 설치 없이 검증 가능.
+ultralytics>=8.3              # YOLO11n 지원 버전. `pip install ultralytics`
+
+# 선택 (실전 확장용)
 # onnxruntime        # YOLO를 ONNX로 변환해 빠르게 추론하려면
