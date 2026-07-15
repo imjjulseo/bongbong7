@@ -18,10 +18,27 @@ def _get_aruco_dictionary():
     return cv2.aruco.getPredefinedDictionary(dict_id)
 
 
+def _build_aruco_params():
+    """2026-07-15 파라미터 스윕으로 확정된 검출 파라미터(field_config.py 참고)."""
+    params = cv2.aruco.DetectorParameters()
+    params.polygonalApproxAccuracyRate = fc.ARUCO_POLYGONAL_APPROX_ACCURACY_RATE
+    params.adaptiveThreshWinSizeMin = fc.ARUCO_ADAPTIVE_THRESH_WIN_SIZE_MIN
+    params.adaptiveThreshWinSizeMax = fc.ARUCO_ADAPTIVE_THRESH_WIN_SIZE_MAX
+    params.adaptiveThreshWinSizeStep = fc.ARUCO_ADAPTIVE_THRESH_WIN_SIZE_STEP
+    return params
+
+
+def _apply_gamma(gray: np.ndarray, gamma: float) -> np.ndarray:
+    """감마 보정(어둡게). gamma>1이면 밝은 영역을 상대적으로 더 눌러 저대비/역광에서
+    마커 흑백 패턴의 대비를 살려줌(field_config.ARUCO_PREPROCESS_GAMMA 참고)."""
+    normalized = gray.astype(np.float32) / 255.0
+    return (np.power(normalized, gamma) * 255.0).astype(np.uint8)
+
+
 class FieldCalibrator:
     def __init__(self):
         self.aruco_dict = _get_aruco_dictionary()
-        self.aruco_params = cv2.aruco.DetectorParameters()
+        self.aruco_params = _build_aruco_params()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         self.homography = None  # 3x3, pixel(x,y,1) -> world_cm(x,y,1)
         self.last_marker_corners = []  # 최근 검출된 마커들의 픽셀 코너 (마스킹용)
@@ -30,6 +47,7 @@ class FieldCalibrator:
     def detect_markers(self, image_bgr: np.ndarray):
         """이미지에서 ArUco 마커를 검출. corners, ids 반환."""
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+        gray = _apply_gamma(gray, fc.ARUCO_PREPROCESS_GAMMA)
         corners, ids, _rejected = self.detector.detectMarkers(gray)
         return corners, ids
 
