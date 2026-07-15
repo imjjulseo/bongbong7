@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-video_watcher.py
+video_watcher_ensemble.py
+=================
+
+[고도화 적용]
+이전처럼 모든 프레임을 무한히 누적하지 않고, 단일 영상 단위로 파이프라인을 실행합니다.
+이후 ArUco 마커의 형태를 분석해 카메라 뷰(TOP_VIEW / SIDE_VIEW)를 판별하고,
+VideoEnsembleManager를 통해 최근 2개 영상의 장점(특정 시설물 측면 뷰 우선, 폭파구 탐지 수직 뷰 우선)
+만을 융합(Ensemble)하여 최종 JSON을 생성하고 대시보드로 전송합니다.
+
+
 =================
 1단계: 영상 입력 -> watchdog 감시 -> 지정 프레임 간격마다 이미지로 추출.
 
@@ -47,6 +56,12 @@ from calibration import FieldCalibrator
 from img_io import imread_safe, imwrite_safe
 from transmitter import summarize_failures
 
+# 앙상블 용으로 사용
+from ensemble_manager import VideoEnsembleManager
+from calibration import estimate_camera_angle
+import json
+from transmitter import transmit_all
+
 
 def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2):
     """영상 파일 쓰기가 끝났다고 판단될 때까지(크기 변화가 멈출 때까지) 대기"""
@@ -65,31 +80,29 @@ def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2)
         time.sleep(poll_sec)
 
 
-def quick_check_aruco(video_path: str):
+def quick_check_aruco(video_path: str) -> bool:
     """
     드론이 정지 상태에서 촬영한다는 전제 하에, 영상 중간 프레임 1장만 빠르게 읽어
     ArUco 마커 캘리브레이션이 되는지 확인합니다. 프레임 전체 추출/YOLO 추론 전에
     마커가 아예 안 잡히는 영상을 빠르게 걸러내기 위한 용도입니다.
-    성공한 중간 프레임 자체를 돌려줘서, 코팅 반사 등으로 실제 추출된 프레임들에서는
-    마커가 하나도 안 잡히더라도 이 프레임 한 장은 파이프라인에서 그대로 쓸 수 있게 합니다.
-    반환: 캘리브레이션에 성공한 프레임(BGR numpy) 또는 실패 시 None
+    반환: 캘리브레이션 성공 여부
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         cap.release()
-        return None
+        return False
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     mid_idx = max(0, total_frames // 2)
     cap.set(cv2.CAP_PROP_POS_FRAMES, mid_idx)
     ok, frame = cap.read()
     cap.release()
     if not ok or frame is None:
-        return None
+        return False
     try:
         FieldCalibrator().calibrate_from_image(frame)
-        return frame
+        return True
     except Exception:
-        return None
+        return False
 
 
 def extract_frames(video_path: str, output_dir: str, interval: int = None) -> list:
@@ -131,6 +144,10 @@ class MissionState:
     매번 다시 로드하지 않게 합니다. 영상별 프레임은 누적하지 않고 각 영상을 독립적으로 추론합니다."""
 
     def __init__(self, args):
+
+        # 앙상블 용
+        self.ensemble_manager = VideoEnsembleManager(max_history=2)
+
         self.pipeline = MissionPipeline(
             mission_code=fc.MISSION_CODE, use_llm=not args.no_llm,
             output_dir=args.output,
@@ -148,38 +165,53 @@ def process_video(video_path: str, args, state: "MissionState"):
     print(f"[video_watcher] 새 영상 감지: {video_path}")
     _wait_until_stable(video_path, poll_sec=min(1.0, fc.VIDEO_STABLE_WAIT_SEC), stable_checks=2)
 
-    precheck_frame = None
-    if not args.no_aruco_precheck:
-        precheck_frame = quick_check_aruco(video_path)
-        if precheck_frame is None:
-            print("[video_watcher] ArUco마커가 탐지되지 않았습니다. 이 영상은 건너뜁니다.")
-            return
-        print("[video_watcher] ArUco마커가 탐지되었습니다.")
+    if not args.no_aruco_precheck and not quick_check_aruco(video_path):
+        print("[video_watcher] ArUco마커가 탐지되지 않았습니다. 이 영상은 건너뜁니다.")
+        return
 
     frame_paths = extract_frames(video_path, fc.FRAME_OUTPUT_DIR, args.interval)
     print(f"[video_watcher] 프레임 {len(frame_paths)}장 추출 완료 -> {fc.FRAME_OUTPUT_DIR}")
 
-    if args.no_auto_run:
+    if args.no_auto_run or not frame_paths:
         return
 
     new_frames = [imread_safe(p) for p in frame_paths]
     new_frames = [f for f in new_frames if f is not None]
-    if precheck_frame is not None:
-        # 추출된 프레임들에서 전부 마커 검출이 실패해도(코팅 반사 등), precheck에서 이미
-        # 마커 검출에 성공한 중간 프레임 한 장은 보장되므로 항상 포함시킵니다.
-        new_frames.append(precheck_frame)
     if not new_frames:
         print("[video_watcher] 추출된 프레임을 읽지 못해 파이프라인을 건너뜁니다.")
         return
 
+    # 앙상블 이전 legacy
+
     # 이 영상의 프레임만으로 독립적으로 추론합니다 (이전 영상 프레임과 합치지 않음).
-    result, _ = state.pipeline.run(new_frames, send_to_dashboard=args.send, visualize=args.visualize)
+    # result = state.pipeline.run(new_frames, send_to_dashboard=args.send, visualize=args.visualize)
+
+    # 앙상블
+    result, confidence = state.pipeline.run(new_frames, send_to_dashboard=False, visualize=args.visualize)
+    
+    angle = estimate_camera_angle(state.pipeline)
+    print(f"[video_watcher] 자동 판별된 촬영 뷰: {angle}")
+    state.ensemble_manager.add_video_result(result["outputs"], angle, confidence)
+    ensembled_outputs = state.ensemble_manager.get_ensembled_result()
+
+    for key, data in ensembled_outputs.items():
+        with open(os.path.join(args.output, f"{key}.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
     print(f"[video_watcher] 이 영상 프레임 {len(new_frames)}장 기준 파이프라인 실행 완료. 검증: "
           f"{'통과' if result['validation']['ok'] else '실패'} / 소요시간(초): {result['timing'].get('total')}")
     if not result["validation"]["ok"]:
         print("  오류:", result["validation"]["errors"])
-    for line in summarize_failures(result.get("transmit_result")):
-        print(f"[video_watcher] 전송 실패: {line}")
+    
+    # 앙상블 이전 legacy
+    # for line in summarize_failures(result.get("transmit_result")):
+    #     print(f"[video_watcher] 전송 실패: {line}")
+
+    if args.send and ensembled_outputs:
+        remaining_order = [k for k in fc.TRANSMIT_ORDER if k != "start"]
+        transmit_result = transmit_all(ensembled_outputs, order=remaining_order)
+        for line in summarize_failures(transmit_result):
+            print(f"[video_watcher] 전송 실패: {line}")
 
 
 class _VideoCreatedHandler:
@@ -271,7 +303,7 @@ def main():
     parser.add_argument("--visualize", action="store_true",
                          help="최종 JSON과 동일한 결과를 프레임 위에 그려 output/visualize.png로 저장")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None)
-    parser.add_argument("--facility-backend", choices=["classical", "yolo", "hybrid"], default=None)
+    parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--weights", type=str, default=None,
                          help="yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS 대신 쓸 폭파구/불발탄 탐지 "
                               "가중치(.pt) 경로 (학습 중인 체크포인트를 바로 테스트할 때 등)")
