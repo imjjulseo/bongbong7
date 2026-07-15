@@ -117,10 +117,11 @@ class VideoEnsembleManager:
             latest_dict[target_key] = latest_items
             return latest_items
 
-        # 폭파구 핀포인트 교체
-        latest_result["crater_detect"] = _swap_low_conf_objects("crater_detect", "crater")
+        # 폭파구 핀포인트 교체 (latest_dict가 latest_result["crater_detect"]를 그대로 참조하므로
+        # mission_code를 포함한 {"mission_code":..., "crater_detect":[...]} 구조가 그대로 유지됨)
+        _swap_low_conf_objects("crater_detect", "crater")
         # 불발탄 핀포인트 교체
-        latest_result["uxo_detect"] = _swap_low_conf_objects("uxo_detect", "uxo")
+        _swap_low_conf_objects("uxo_detect", "uxo")
 
         return latest_result
 
