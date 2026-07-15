@@ -163,8 +163,7 @@ def process_video(video_path: str, args, state: "MissionState"):
         return
 
     # 이 영상의 프레임만으로 독립적으로 추론합니다 (이전 영상 프레임과 합치지 않음).
-    result = state.pipeline.run(new_frames, send_to_dashboard=args.send, visualize=args.visualize,
-                                 include_confidence=args.confidence)
+    result, _ = state.pipeline.run(new_frames, send_to_dashboard=args.send, visualize=args.visualize)
     print(f"[video_watcher] 이 영상 프레임 {len(new_frames)}장 기준 파이프라인 실행 완료. 검증: "
           f"{'통과' if result['validation']['ok'] else '실패'} / 소요시간(초): {result['timing'].get('total')}")
     if not result["validation"]["ok"]:
@@ -261,9 +260,6 @@ def main():
     parser.add_argument("--send", action="store_true", help="파이프라인 완료 후 대시보드 전송(6단계)까지 실행")
     parser.add_argument("--visualize", action="store_true",
                          help="최종 JSON과 동일한 결과를 프레임 위에 그려 output/visualize.png로 저장")
-    parser.add_argument("--confidence", action="store_true",
-                         help="crater_detect/uxo_detect/facility_status 각 항목에 confidence 필드 추가 "
-                              "(앙상블용 임시 출력 - 대회 제출용 JSON에는 쓰지 말 것)")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None)
     parser.add_argument("--weights", type=str, default=None,

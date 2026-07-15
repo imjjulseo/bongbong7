@@ -2,7 +2,6 @@
 """
 video_watcher_ensemble.py
 =================
-1단계: 영상 입력 -> watchdog 감시 -> 지정 프레임 간격마다 이미지로 추출.
 
 [고도화 적용]
 이전처럼 모든 프레임을 무한히 누적하지 않고, 단일 영상 단위로 파이프라인을 실행합니다.
@@ -10,19 +9,37 @@ video_watcher_ensemble.py
 VideoEnsembleManager를 통해 최근 2개 영상의 장점(특정 시설물 측면 뷰 우선, 폭파구 탐지 수직 뷰 우선)
 만을 융합(Ensemble)하여 최종 JSON을 생성하고 대시보드로 전송합니다.
 
+
+=================
+1단계: 영상 입력 -> watchdog 감시 -> 지정 프레임 간격마다 이미지로 추출.
+
+지정 폴더(field_config.VIDEO_INPUT_DIR)에 영상 파일(.mp4 등)이 새로 생성되면
+watchdog이 감지하여, field_config.FRAME_EXTRACT_INTERVAL 프레임마다 1장씩
+이미지를 추출해 field_config.FRAME_OUTPUT_DIR에 저장합니다.
+추출이 끝나면 바로 이어서(2~6단계) MissionPipeline을 실행해 8개 JSON까지 생성합니다
+(--no-auto-run 옵션으로 추출만 하고 파이프라인 실행은 생략할 수 있음).
+
 드론이 정지 상태에서 촬영한다는 전제 하에, 전체 프레임을 추출하기 전 영상 중간 프레임
 1장만 빠르게 읽어 ArUco 마커가 잡히는지 먼저 확인합니다(quick_check_aruco). 마커가 아예
 안 잡히면 "ArUco마커가 탐지되지 않았습니다"를 출력하고 이 영상은 건너뛴 뒤 바로 다음 영상
 대기 상태로 돌아갑니다(--no-aruco-precheck로 끌 수 있음).
 
+실전 운용 시나리오: 1분 준비시간에 --watch --send로 실행해두면, 3분 비행 동안
+드론 영상이 여러 개 파일로 나뉘어 반복 전송되어도(대시보드로 진행도를 보다가
+일찍 착륙시켜 끝내는 것도 가능) PC를 만지지 않아도 됩니다. 영상은 각각 도착한
+프레임만으로 독립적으로 추론/전송됩니다(이전 영상 프레임과 합치지 않음) -
+MissionPipeline 인스턴스만 재사용해 YOLO 모델을 매번 다시 로드하지 않습니다.
+
 사용법:
-  1) 폴더를 계속 감시하며 새 영상이 들어올 때마다 자동 교차 앙상블 처리:
+  1) 폴더를 계속 감시하며 새 영상이 들어올 때마다 각각 독립 처리:
      python scripts/video_watcher.py --watch --send
 
-  2) 폴더에 이미 있는 영상들을 순차적으로 앙상블 처리하고 종료:
+  2) 폴더에 이미 있는 영상들을 각각 독립적으로 처리하고 종료:
      python scripts/video_watcher.py --once
-"""
 
+ultralytics와 마찬가지로, watchdog은 이 스크립트를 실제로 실행할 때만 필요합니다
+(`pip install watchdog`).
+"""
 import os
 import sys
 import time
@@ -127,7 +144,7 @@ class MissionState:
     매번 다시 로드하지 않게 합니다. 영상별 프레임은 누적하지 않고 각 영상을 독립적으로 추론합니다."""
 
     def __init__(self, args):
-        
+
         # 앙상블 용
         self.ensemble_manager = VideoEnsembleManager(max_history=2)
 
@@ -163,19 +180,18 @@ def process_video(video_path: str, args, state: "MissionState"):
     if not new_frames:
         print("[video_watcher] 추출된 프레임을 읽지 못해 파이프라인을 건너뜁니다.")
         return
-    
+
     # 앙상블 이전 legacy
 
     # 이 영상의 프레임만으로 독립적으로 추론합니다 (이전 영상 프레임과 합치지 않음).
     # result = state.pipeline.run(new_frames, send_to_dashboard=args.send, visualize=args.visualize)
 
     # 앙상블
-    result = state.pipeline.run(new_frames, send_to_dashboard=False, visualize=args.visualize)
+    result, confidence = state.pipeline.run(new_frames, send_to_dashboard=False, visualize=args.visualize)
     
     angle = estimate_camera_angle(state.pipeline)
     print(f"[video_watcher] 자동 판별된 촬영 뷰: {angle}")
-    print(result)
-    state.ensemble_manager.add_video_result(result["outputs"], angle)
+    state.ensemble_manager.add_video_result(result["outputs"], angle, confidence)
     ensembled_outputs = state.ensemble_manager.get_ensembled_result()
 
     for key, data in ensembled_outputs.items():

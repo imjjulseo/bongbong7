@@ -281,3 +281,9 @@ def classify_runway_status(available_length_m: float):
         if available_length_m >= threshold:
             return status, availability
     return RUNWAY_STATUS_THRESHOLDS[-1][1], RUNWAY_STATUS_THRESHOLDS[-1][2]
+
+
+# ---------------------------------------------------------
+# 16. 앙상블 confidence 기준
+# ---------------------------------------------------------
+CONFIDENCE_THRESHOLD = 0.70
