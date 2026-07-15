@@ -50,7 +50,7 @@ def main():
     parser.add_argument("--send", action="store_true", help="파이프라인 완료 후 대시보드 전송(6단계)까지 실행")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None,
                          help="폭파구/불발탄 탐지 백엔드 (생략 시 field_config.DETECTOR_BACKEND 사용)")
-    parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None,
+    parser.add_argument("--facility-backend", choices=["classical", "yolo", "hybrid"], default=None,
                          help="시설물 상태 분류 백엔드 (생략 시 field_config.FACILITY_BACKEND 사용)")
     parser.add_argument("--visualize", action="store_true",
                          help="최종 JSON과 동일한 결과를 프레임 위에 그려 output/visualize.png로 저장")

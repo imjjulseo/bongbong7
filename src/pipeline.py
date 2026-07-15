@@ -160,21 +160,18 @@ class MissionPipeline:
         # ---------------- 2단계 + 3-A/3-B: 프레임별 워핑 + 배치 추론 ----------------
         # 프레임마다 재보정하는 이유: 드론이 미세하게 움직이면 카메라 자세가 바뀌므로,
         # 프레임마다 ArUco를 다시 인식해야 좌표 정확도가 유지됩니다.
-        # 마커가 일시적으로 가려진 프레임은 직전 보정값을 그대로 재사용합니다(안전장치).
+        # 해당 프레임에서 마커가 검출되지 않으면 이전 보정값을 재사용하지 않고 그 프레임
+        # 자체를 버립니다(잘못된 보정값으로 좌표를 계산하는 것을 방지).
         self._tic("warp_and_detect")
         raw_craters = []
         raw_uxo = []
         facility_frame_results = {slot: [] for slot in fc.FACILITY_SLOTS}
-        calibrated_at_least_once = False
 
         for frame in frames_bgr:
             try:
                 self.calibrator.calibrate_from_image(frame)
-                calibrated_at_least_once = True
             except Exception:
-                if not calibrated_at_least_once:
-                    continue  # 첫 프레임부터 마커 검출 실패 -> 이 프레임은 건너뜀
-                # 이전 프레임의 보정값을 그대로 사용 (self.calibrator.homography 유지됨)
+                continue  # 이 프레임에서 마커 검출 실패 -> 이 프레임은 버림
 
             # -- 마커 영역은 워핑 전에 미리 지워서 오탐 방지 (흑백 패턴이 어두운 물체로 오인될 수 있음) --
             marker_polygons = []

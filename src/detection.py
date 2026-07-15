@@ -325,6 +325,77 @@ def aggregate_temporal_status(frame_results: List[Tuple[str, float]]) -> Tuple[s
     return most_common, round(avg_conf, 2)
 
 
+def classify_fire_by_contrast(roi_bgr: np.ndarray) -> Tuple[bool, float]:
+    """
+    2026-07-15 실험(yolo_facility1+2, 552장)으로 검증한 고전 CV 화재 판정.
+    핵심 아이디어: 진짜 불은 가장 큰 붉은 덩어리의 "중심이 가장자리(같은 덩어리의 링 부분)보다
+    뚜렷하게 밝다"(하얀 코어가 있음)는 대비(contrast)가 뚜렷한데, destroy의 붉은 파손 스티커는
+    중심과 가장자리 밝기가 거의 같음(순수한 빨강). 절대 밝기 임계값이 아니라 "중심 vs 주변 대비"를
+    보는 게 핵심이라 destroy의 붉은 스티커와 잘 구분됨(검증 결과: recall 90.4%, precision 100%,
+    destroy/normal 오탐 0건).
+    반환: (fire 여부, confidence). 이 함수는 "fire다/아니다"만 판정하며, fire가 아니면 호출부가
+    다른 백엔드(YOLO 등)의 판단을 그대로 따라야 함 - HybridFacilityClassifier 참고.
+    """
+    if roi_bgr.size == 0:
+        return False, 0.0
+
+    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+    h, w = roi_bgr.shape[:2]
+    total = h * w
+    V = hsv[:, :, 2].astype(np.float32)
+    S = hsv[:, :, 1].astype(np.float32)
+
+    red_mask1 = cv2.inRange(hsv, (0, 120, 150), (15, 255, 255))
+    red_mask2 = cv2.inRange(hsv, (160, 120, 150), (179, 255, 255))
+    red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+    red_ratio = cv2.countNonZero(red_mask) / total
+    if red_ratio <= 0.002:
+        return False, 0.0
+
+    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return False, 0.0
+    largest = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(largest)
+    if area <= 0:
+        return False, 0.0
+
+    blob_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.drawContours(blob_mask, [largest], -1, 255, -1)
+    M = cv2.moments(largest)
+    if M["m00"] <= 0:
+        return False, 0.0
+    cx, cy = M["m10"] / M["m00"], M["m01"] / M["m00"]
+    radius = np.sqrt(area / np.pi)
+
+    core_region = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(core_region, (int(cx), int(cy)), max(2, int(radius * 0.6)), 255, -1)
+    core_region = cv2.bitwise_and(core_region, blob_mask)
+    ring_region = cv2.bitwise_and(blob_mask, cv2.bitwise_not(core_region))
+
+    core_px = core_region > 0
+    n_core = int(core_px.sum())
+    if n_core == 0:
+        return False, 0.0
+
+    ring_px = ring_region > 0
+    if ring_px.any():
+        ring_V_mean = float(V[ring_px].mean())
+    else:
+        bg_px = blob_mask == 0
+        ring_V_mean = float(V[bg_px].mean()) if bg_px.any() else float(V[core_px].mean())
+
+    core_V_mean = float(V[core_px].mean())
+    core_S_min = float(S[core_px].min())
+    contrast_V = core_V_mean - ring_V_mean
+
+    is_fire = contrast_V > 15 and core_S_min < 100
+    if not is_fire:
+        return False, 0.0
+    confidence = round(min(1.0, contrast_V / 40.0), 2)
+    return True, confidence
+
+
 class ClassicalFacilityClassifier(FacilityStatusBackend):
     """HSV 색상 기반 프레임별 1차 판정 (지금 바로 동작, 학습 불필요). 시계열 집계는
     detection.aggregate_temporal_status()가 담당(다수결 + fire는 confidence 자체가 색상비율 기반이라
@@ -423,6 +494,39 @@ class YoloFacilityClassifier(FacilityStatusBackend):
         return out
 
 
+class HybridFacilityClassifier(FacilityStatusBackend):
+    """
+    화재 판정은 고전 CV(classify_fire_by_contrast, precision 100%로 검증됨)가 전담하고,
+    "fire 아님"으로 판정된 것만 YOLO11n-cls(YoloFacilityClassifier)에 넘겨 destroy/normal을
+    가리게 하는 하이브리드 백엔드. 고전 CV가 fire를 놓쳐도(recall 90%) YOLO가 fire로 잡아낼
+    여지가 있어 최종 recall은 유지되면서, 고전 CV가 fire라고 확신한 건 YOLO보다 먼저 확정되어
+    destroy 스티커와의 혼동을 원천 차단함.
+    """
+
+    def __init__(self, weights_path: str = None, conf_threshold: float = None, class_map: dict = None):
+        self.yolo = YoloFacilityClassifier(weights_path=weights_path, conf_threshold=conf_threshold,
+                                            class_map=class_map)
+
+    def classify_frame(self, roi_bgr: np.ndarray) -> Tuple[str, float]:
+        is_fire, confidence = classify_fire_by_contrast(roi_bgr)
+        if is_fire:
+            return "fire", confidence
+        return self.yolo.classify_frame(roi_bgr)
+
+    def classify_frame_batch(self, rois_by_slot: Dict[str, np.ndarray]) -> Dict[str, Tuple[str, float]]:
+        out = {}
+        remaining = {}
+        for slot, roi in rois_by_slot.items():
+            is_fire, confidence = classify_fire_by_contrast(roi)
+            if is_fire:
+                out[slot] = ("fire", confidence)
+            else:
+                remaining[slot] = roi
+        if remaining:
+            out.update(self.yolo.classify_frame_batch(remaining))
+        return out
+
+
 def build_facility_classifier(backend: str = None, **kwargs) -> FacilityStatusBackend:
     """config.FACILITY_BACKEND(또는 인자로 넘긴 backend)에 맞는 분류기를 생성"""
     backend = backend or fc.FACILITY_BACKEND
@@ -430,4 +534,6 @@ def build_facility_classifier(backend: str = None, **kwargs) -> FacilityStatusBa
         return ClassicalFacilityClassifier(**kwargs)
     if backend == "yolo":
         return YoloFacilityClassifier(**kwargs)
-    raise ValueError(f"알 수 없는 FACILITY_BACKEND: {backend!r} (classical|yolo 중 하나여야 함)")
+    if backend == "hybrid":
+        return HybridFacilityClassifier(**kwargs)
+    raise ValueError(f"알 수 없는 FACILITY_BACKEND: {backend!r} (classical|yolo|hybrid 중 하나여야 함)")
