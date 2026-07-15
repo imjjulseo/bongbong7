@@ -52,6 +52,8 @@ def main():
                          help="폭파구/불발탄 탐지 백엔드 (생략 시 field_config.DETECTOR_BACKEND 사용)")
     parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None,
                          help="시설물 상태 분류 백엔드 (생략 시 field_config.FACILITY_BACKEND 사용)")
+    parser.add_argument("--visualize", action="store_true",
+                         help="최종 JSON과 동일한 결과를 프레임 위에 그려 output/visualize.png로 저장")
     args = parser.parse_args()
 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -81,7 +83,7 @@ def main():
                                 detector_backend=args.detector_backend,
                                 facility_backend=args.facility_backend)
     start_result = pipeline.send_start(send_to_dashboard=args.send)
-    result = pipeline.run(frames, send_to_dashboard=args.send)
+    result = pipeline.run(frames, send_to_dashboard=args.send, visualize=args.visualize)
 
     print(f"[3/3] 완료! 결과 저장 위치: {output_dir}\n")
     print("=" * 60)

@@ -9,7 +9,8 @@ test_images/*_frame_*.png
 *.pt
 models/
 runs/
-debug_viz/
+debug_viz*/
+output/visualize.png
 enhancement/generated_dataset/
 data/object/images/
 data/object/labels/

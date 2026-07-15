@@ -24,6 +24,8 @@ import sys
 import json
 import time
 
+import cv2
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -42,6 +44,16 @@ import uxo_analysis as uxa
 from report_generator import generate_report
 from validator import validate_all
 from transmitter import transmit_all
+from img_io import imwrite_safe
+
+VIZ_GRID_COLOR = (110, 96, 80)
+VIZ_DET_COLOR = (32, 107, 255)
+VIZ_FACILITY_COLOR = {
+    "normal": (60, 180, 60),
+    "destroy": (0, 140, 255),
+    "fire": (0, 0, 255),
+    "unconfirmed": (150, 150, 150),
+}
 
 
 def _enforce_count_bounds(items, kind_label, min_entries, max_entries, filler_factory):
@@ -124,10 +136,14 @@ class MissionPipeline:
         return {"start": start_doc, "saved_file": saved_file, "transmit_result": transmit_result}
 
     # -----------------------------------------------------------------
-    def run(self, frames_bgr: list, send_to_dashboard: bool = False):
+    def run(self, frames_bgr: list, send_to_dashboard: bool = False, visualize: bool = False):
         """
         frames_bgr: watchdog/프레임 추출 단계에서 넘어온 여러 프레임(numpy BGR 이미지) 리스트
         send_to_dashboard: True면 6단계(전송)까지 실행. 기본은 파일 저장까지만.
+        visualize: True면 최종 JSON이 나온 직후 프레임 중 하나(마지막으로 처리된 프레임)를 골라
+            최종 결과(crater_detect/uxo_detect/facility_status)와 동일하게 시각화해
+            output_dir/visualize.png로 저장합니다. 기본은 비활성(디버깅용, 매 실행마다 그릴
+            필요는 없음).
         반환: outputs 딕셔너리(7개 JSON, start.json 제외) + 저장된 파일 경로 목록 + 검증/전송 결과
 
         주의: start.json은 이 메서드가 아니라 send_start()가 세션 시작 시 1번만 담당합니다.
@@ -135,6 +151,7 @@ class MissionPipeline:
         t_start = time.time()
         outputs = {}
         saved_files = []
+        last_topview, last_px_per_cm = None, None
 
         # ---------------- 2단계 + 3-A/3-B: 프레임별 워핑 + 배치 추론 ----------------
         # 프레임마다 재보정하는 이유: 드론이 미세하게 움직이면 카메라 자세가 바뀌므로,
@@ -165,6 +182,7 @@ class MissionPipeline:
 
             # -- 2단계: 탑뷰(bird's eye) 워핑. 이후 모든 crop은 픽셀 슬라이싱만으로 충분 --
             topview, px_per_cm = self.calibrator.warp_to_topview(frame_clean)
+            last_topview, last_px_per_cm = topview, px_per_cm  # visualize=True일 때 사용할 프레임
 
             # -- 3-A: zone 타일(경계 걸침 없는 그리드) crop -> YOLO11n 배치 추론 --
             zone_tiles = crop_zone_tiles(topview, px_per_cm)
@@ -313,6 +331,21 @@ class MissionPipeline:
         saved_files.append(self._save("report.json", outputs["report"]))
         self._toc("report_generation")
 
+        # ---------------- (선택) 최종 결과 시각화 ----------------
+        # JSON이 전부 나온 직후, 처리된 프레임 중 하나(마지막 프레임)에 최종 결과를 그대로 그림.
+        visualize_file = None
+        if visualize:
+            self._tic("visualize")
+            if last_topview is None:
+                print("[pipeline] visualize=True였지만 캘리브레이션에 성공한 프레임이 없어 건너뜁니다.")
+            else:
+                visualize_file = self._render_visualization(
+                    last_topview, last_px_per_cm, craters_bounded, uxo_deduped_sorted, facilities,
+                )
+                saved_files.append(visualize_file)
+                print(f"[pipeline] 최종 결과 시각화 저장: {visualize_file}")
+            self._toc("visualize")
+
         total_elapsed = round(time.time() - t_start, 2)
         self.timing["total"] = total_elapsed
 
@@ -333,6 +366,7 @@ class MissionPipeline:
             "validation": validation,
             "transmit_result": transmit_result,
             "report_source": report_result["source"],  # 디버그용, 저장되는 JSON에는 포함 안 됨
+            "visualize_file": visualize_file,
         }
 
     # -----------------------------------------------------------------
@@ -340,4 +374,55 @@ class MissionPipeline:
         path = os.path.join(self.output_dir, filename)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        return path
+
+    # -----------------------------------------------------------------
+    def _render_visualization(self, topview, px_per_cm, craters, uxo_list, facilities):
+        """최종 결과(craters/uxo_list/facilities - crater_detect.json/uxo_detect.json/
+        facility_status.json으로 그대로 나가는 것과 동일한 리스트)를 topview 위에 그려
+        output_dir/visualize.png로 저장. confidence==0.0인 항목은 _enforce_count_bounds가
+        채운 자리채움(실제 탐지 아님)이므로 그리지 않음."""
+        canvas = topview.copy()
+        for zone_name, bounds in fc.SEGMENTS.items():
+            x0 = int(round(bounds["x_min"] * px_per_cm))
+            y0 = int(round(bounds["y_min"] * px_per_cm))
+            x1 = int(round(bounds["x_max"] * px_per_cm))
+            y1 = int(round(bounds["y_max"] * px_per_cm))
+            cv2.rectangle(canvas, (x0, y0), (x1, y1), VIZ_GRID_COLOR, 1)
+            cv2.putText(canvas, zone_name, (x0 + 4, y0 + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                        VIZ_GRID_COLOR, 1, cv2.LINE_AA)
+
+        def draw_marker(world_xy, label, size_table_entry):
+            wx, wy = world_xy
+            gx, gy = wx * px_per_cm, wy * px_per_cm
+            diameter_mm = (size_table_entry["w"] + size_table_entry["h"]) / 2.0 \
+                if "h" in size_table_entry else (size_table_entry["w"] + size_table_entry["d"]) / 2.0
+            r = max((diameter_mm / 10.0) * px_per_cm / 2.0, 6)
+            cv2.circle(canvas, (int(gx), int(gy)), int(r), VIZ_DET_COLOR, 2, cv2.LINE_AA)
+            cv2.putText(canvas, label, (int(gx - r), int(gy - r - 4)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, VIZ_DET_COLOR, 1, cv2.LINE_AA)
+
+        for c in craters:
+            if c.get("confidence", 0.0) <= 0.0:
+                continue
+            draw_marker(c["world_xy"], c["size_class"], fc.CRATER_SIZE_TABLE_MM[c["size_class"]])
+        for u in uxo_list:
+            if u.get("confidence", 0.0) <= 0.0:
+                continue
+            draw_marker(u["world_xy"], u["type"], fc.UXO_SIZE_TABLE_MM[u["type"]])
+
+        for f in facilities:
+            x0, y0, x1, y1 = (
+                int(round(fc.SEGMENTS[f["slot"]]["x_min"] * px_per_cm)),
+                int(round(fc.SEGMENTS[f["slot"]]["y_min"] * px_per_cm)),
+                int(round(fc.SEGMENTS[f["slot"]]["x_max"] * px_per_cm)),
+                int(round(fc.SEGMENTS[f["slot"]]["y_max"] * px_per_cm)),
+            )
+            color = VIZ_FACILITY_COLOR.get(f["status"], VIZ_FACILITY_COLOR["unconfirmed"])
+            cv2.rectangle(canvas, (x0, y0), (x1, y1), color, 3)
+            cv2.putText(canvas, f"{f['slot']}: {f['status']}", (x0 + 4, y0 + 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+
+        path = os.path.join(self.output_dir, "visualize.png")
+        imwrite_safe(path, canvas)
         return path
