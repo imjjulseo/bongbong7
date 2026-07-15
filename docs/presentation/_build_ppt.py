@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-bongbong7 팀 - 제8회 공군 해커톤 AI경진대회 본선 발표자료 (전체 12슬라이드)
+bongbong7 팀 - 제8회 공군 해커톤 AI경진대회 본선 발표자료 (전체 13슬라이드)
 디자인: 화이트 배경 + 틸→네이비 그라데이션 램프, 프로세스/타임라인 인포그래픽 스타일
 평가기준(발표평가 20점: 문제해결접근성5·AI모델설계5·임무수행전략5·발표및질의응답5) 대응 구성
 """
@@ -325,7 +325,7 @@ add_text(s2, cx + pad, row2_y + pad + dia + Inches(0.05), col_w - pad * 2, Inche
 bullets = [
     "20개 zone · 배치추론 1회 처리",
     "시설물 6슬롯 강제 매핑",
-    "로컬 LLM + 오프라인 폴백",
+    "Claude API + 오프라인 폴백",
     "전송 전 자동 QA 검증",
 ]
 by = row2_y + pad + dia + Inches(0.36)
@@ -460,7 +460,7 @@ rows = [
     ("위험 장애물 탐지", "(20점)", "중",
      "미사일·포탄·자탄 탐지 + 구간별 개수 상한(cap) 적용", "uxo_analysis.py"),
     ("LLM 기반 상황보고", "(7점)", "상",
-     "로컬 LLM + 오프라인 템플릿 이중화, 100자 제약 자동 준수", "report_generator.py"),
+     "Claude API + 오프라인 템플릿 이중화, 100자 제약 자동 준수", "report_generator.py"),
     ("임무 수행 시간", "(10점)", "중",
      "zone 타일 배치추론 1회 호출로 3분(180초) 제한 대응", "pipeline.py"),
 ]
@@ -510,9 +510,9 @@ lt_w = Inches(5.35)
 lt_y = Inches(2.55)
 stack_rows = [
     ("폭파구 · 불발탄 탐지", "YOLO11n 객체탐지 + ArUco 호모그래피"),
-    ("시설물 상태 분류", "YOLO11n-cls 이미지 분류"),
+    ("시설물 상태 분류", "고전CV(화재) + YOLO11n-cls(파손/정상) 하이브리드"),
     ("좌표 정합", "OpenCV Homography / Perspective Transform"),
-    ("상황보고 생성", "로컬 LLM(Ollama qwen2.5) + Prompt Engineering"),
+    ("상황보고 생성", "Claude API(Haiku) + Prompt Engineering"),
 ]
 add_text(s5, lt_x, lt_y, lt_w, Inches(0.3), "임무별 기술 스택", size=13, color=NAVY, bold=True)
 sy = lt_y + Inches(0.42)
@@ -538,7 +538,7 @@ philosophy = [
     "배치추론 1회 호출 — zone 타일·ROI를 한 번의 predict(list)로 처리",
     "실좌표 기반 중복 제거 — 같은 지점 다중 촬영에도 개수 안 부풀림",
     "시설물 6슬롯 강제 매핑 — 탐지 실패해도 unconfirmed로 항상 6개 보고",
-    "로컬 LLM + 오프라인 폴백 — Ollama 실패해도 템플릿 자동 전환",
+    "Claude API + 오프라인 폴백 — 전송단계도 인터넷 필요, API 실패해도 템플릿 전환",
     "고전CV ↔ YOLO11n 백엔드 전환 — 현장 리스크 대비 안전장치",
 ]
 py = lt_y + Inches(0.46)
@@ -737,13 +737,77 @@ for i, (h, d) in enumerate(ensemble_steps):
 
 
 # =====================================================================
-# SLIDE 09 : 핵심 알고리즘③ 활주로 가용길이 & 시설물 강제매핑
+# SLIDE 09 : 테스트가 이끈 설계 — 하이브리드 판정 & 다중영상 앙상블
 # =====================================================================
-s9 = prs.slides.add_slide(blank)
-set_bg(s9, BG)
-header_footer(s9, "09", "src/runway_analysis.py · facility_analysis.py 기준", "ALGORITHM · RUNWAY")
+s9b = prs.slides.add_slide(blank)
+set_bg(s9b, BG)
+header_footer(s9b, "09", "src/detection.py(HybridFacilityClassifier) · ensemble_manager.py 기준", "TEST-DRIVEN REFINEMENT")
 title_block(
-    s9,
+    s9b,
+    "실측 수치로 검증한 하이브리드 판정 & 다중영상 앙상블",
+    "라벨 통계·현장 테스트에서 나온 결과를 그대로 설계에 반영했습니다"
+)
+
+hb_x = MX
+hb_w = Inches(5.60)
+hb_y = Inches(2.55)
+add_text(s9b, hb_x, hb_y, hb_w, Inches(0.3), "화재 판정 하이브리드 백엔드", size=13, color=NAVY, bold=True)
+
+metric_y = hb_y + Inches(0.44)
+metrics = [("precision", "100%", "고전CV(대비 기반) 화재판정 — 오탐 없음"),
+           ("recall", "90%", "일부 화재를 놓칠 수 있어 YOLO로 보완")]
+mx_ = hb_x
+mw = (hb_w - Inches(0.2)) / 2
+for label, val, note in metrics:
+    add_rect(s9b, mx_, metric_y, mw, Inches(0.86), fill=NAVY_DEEP, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
+    add_text(s9b, mx_ + Inches(0.16), metric_y + Inches(0.10), mw - Inches(0.32), Inches(0.2),
+              label, size=8.6, color=TEAL, bold=True)
+    add_text(s9b, mx_ + Inches(0.16), metric_y + Inches(0.28), mw - Inches(0.32), Inches(0.4),
+              val, size=22, color=WHITE, bold=True)
+    mx_ += mw + Inches(0.2)
+add_text(s9b, hb_x, metric_y + Inches(0.98), hb_w, Inches(0.4),
+          "고전CV가 놓친 fire는 YOLO11n-cls가 보완, 고전CV가 확신한 fire는 우선 확정돼 destroy 스티커와 혼동을 차단합니다.",
+          size=9.0, color=TEXT_GRAY, line_spacing=1.25)
+add_pill(s9b, hb_x, metric_y + Inches(1.42), Inches(3.3), Inches(0.3),
+         "FACILITY_BACKEND = \"hybrid\" 확정", fill=TEAL_BG2, text_color=TEAL_TX2, size=8.6)
+
+hb_rx = Inches(6.55)
+hb_rw = Inches(6.23)
+add_text(s9b, hb_rx, hb_y, hb_rw, Inches(0.3), "다중 영상 각도 앙상블 (VideoEnsembleManager)", size=13, color=NAVY, bold=True)
+ens2_steps = [
+    ("각도 × 신뢰도 기반 융합", "최근 N개 영상 결과를 TOP_VIEW/SIDE_VIEW 각도와 confidence로 병합"),
+    ("시설물별 필요 각도 확정 (테스트로 검증)", "FA-01은 측면뷰 필수, FA-03은 상단뷰 필수 — 다른 각도 결과는 무시"),
+    ("폭파구·불발탄 신뢰도 롤백", "최신 영상 confidence가 0.70 미만이고 이전 영상이 더 높으면 이전 결과로 복원"),
+]
+epy2 = hb_y + Inches(0.46)
+for i, (h, d) in enumerate(ens2_steps):
+    add_icon(s9b, MSO_SHAPE.OVAL, hb_rx, epy2, Inches(0.28), Inches(0.28), fill=ramp(i, 3))
+    add_text(s9b, hb_rx, epy2, Inches(0.28), Inches(0.28), str(i + 1), size=10.5, color=WHITE, bold=True,
+              align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    add_text(s9b, hb_rx + Inches(0.42), epy2 - Inches(0.02), hb_rw - Inches(0.42), Inches(0.26),
+              h, size=10.3, color=NAVY, bold=True)
+    add_text(s9b, hb_rx + Inches(0.42), epy2 + Inches(0.26), hb_rw - Inches(0.42), Inches(0.55),
+              d, size=8.8, color=TEXT_GRAY, line_spacing=1.2)
+    epy2 += Inches(0.92)
+
+s9b_case_y = Inches(6.30)
+s9b_case_h = Inches(0.58)
+add_rect(s9b, MX, s9b_case_y, CW, s9b_case_h, fill=TEAL_TINT, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.15)
+add_pill(s9b, MX + Inches(0.2), s9b_case_y + Inches(0.15), Inches(1.5), Inches(0.28),
+         "설계 원칙", fill=TEAL, text_color=WHITE, size=8.6)
+add_text(s9b, MX + Inches(1.9), s9b_case_y + Inches(0.13), CW - Inches(2.1), Inches(0.34),
+          "추측이 아니라 라벨 통계·현장 테스트에서 나온 실측 수치를 근거로 판정 로직을 확정합니다.",
+          size=9.4, color=TEAL_DK, bold=True, anchor=MSO_ANCHOR.MIDDLE)
+
+
+# =====================================================================
+# SLIDE 10 : 핵심 알고리즘③ 활주로 가용길이 & 시설물 강제매핑
+# =====================================================================
+s10 = prs.slides.add_slide(blank)
+set_bg(s10, BG)
+header_footer(s10, "10", "src/runway_analysis.py · facility_analysis.py 기준", "ALGORITHM · RUNWAY")
+title_block(
+    s10,
     "막힌 구간 제외 후 최장 연속 구간 탐색 — O(n) 런렝스 알고리즘",
     "runway_analysis.py의 확정 로직과, 시설물 6슬롯을 항상 채우는 facility_analysis.py 강제 매핑"
 )
@@ -752,7 +816,7 @@ title_block(
 lw_x = MX
 lw_w = Inches(5.9)
 lw_y = Inches(2.55)
-add_text(s9, lw_x, lw_y, lw_w, Inches(0.28), "활주로 가용길이 산출 (예시)", size=12.5, color=NAVY, bold=True)
+add_text(s10, lw_x, lw_y, lw_w, Inches(0.28), "활주로 가용길이 산출 (예시)", size=12.5, color=NAVY, bold=True)
 
 rw_y = lw_y + Inches(0.5)
 rw_h = Inches(0.5)
@@ -763,24 +827,24 @@ for i in range(10):
     x = lw_x + i * (rw_w + rw_gap)
     fill = ORANGE_TX if i in blocked_idx else TEAL_BG2
     txc = WHITE if i in blocked_idx else TEAL_TX2
-    add_rect(s9, x, rw_y, rw_w, rw_h, fill=fill, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.15)
-    add_text(s9, x, rw_y, rw_w, rw_h, f"{i+1:02d}", size=8.5, color=txc, bold=True,
+    add_rect(s10, x, rw_y, rw_w, rw_h, fill=fill, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.15)
+    add_text(s10, x, rw_y, rw_w, rw_h, f"{i+1:02d}", size=8.5, color=txc, bold=True,
               align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-add_text(s9, lw_x, rw_y + rw_h + Inches(0.08), lw_w, Inches(0.22),
+add_text(s10, lw_x, rw_y + rw_h + Inches(0.08), lw_w, Inches(0.22),
           "RW-01~10 (주황 = 폭파구 발견 구간, 청록 = 가용 구간)", size=8.2, color=TEXT_MUTE)
 
 run_y = rw_y + rw_h + Inches(0.42)
-add_text(s9, lw_x, run_y, lw_w, Inches(0.24),
+add_text(s10, lw_x, run_y, lw_w, Inches(0.24),
           "런(run) 탐색 결과", size=9.5, color=NAVY, bold=True)
 run_text = ("[01,02] 2칸(600m)  ·  [04,05,06] 3칸(900m)  ·  [08,09,10] 3칸(900m)\n"
             "→ 동률 시 먼저 나오는 런 채택: 최장 가용길이 = 900m")
-add_text(s9, lw_x, run_y + Inches(0.26), lw_w, Inches(0.55),
+add_text(s10, lw_x, run_y + Inches(0.26), lw_w, Inches(0.55),
           run_text, size=9.0, color=TEXT_GRAY, line_spacing=1.3)
 
 algo_note_y = run_y + Inches(0.92)
-add_rect(s9, lw_x, algo_note_y, lw_w, Inches(0.85), fill=TEAL_TINT,
+add_rect(s10, lw_x, algo_note_y, lw_w, Inches(0.85), fill=TEAL_TINT,
           shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
-add_text(s9, lw_x + Inches(0.18), algo_note_y + Inches(0.12), lw_w - Inches(0.36), Inches(0.62),
+add_text(s10, lw_x + Inches(0.18), algo_note_y + Inches(0.12), lw_w - Inches(0.36), Inches(0.62),
           "알고리즘: 구간을 순서대로 훑으며 막힌 구간에서 현재 런을 flush,\n"
           "가용 구간이면 런에 누적 — 1회 순회(O(n))로 최장 연속 구간을 확정",
           size=8.6, color=TEAL_DK, line_spacing=1.3)
@@ -788,7 +852,7 @@ add_text(s9, lw_x + Inches(0.18), algo_note_y + Inches(0.12), lw_w - Inches(0.36
 # 우측: 시설물 6슬롯 강제매핑
 rw2_x = Inches(6.85)
 rw2_w = Inches(5.93)
-add_text(s9, rw2_x, lw_y, rw2_w, Inches(0.28), "시설물 6슬롯 강제 매핑", size=12.5, color=NAVY, bold=True)
+add_text(s10, rw2_x, lw_y, rw2_w, Inches(0.28), "시설물 6슬롯 강제 매핑", size=12.5, color=NAVY, bold=True)
 
 fac_status = [("FA-01", "normal", TEAL_BG2, TEAL_TX2), ("FA-02", "fire", ORANGE_BG, ORANGE_TX),
               ("FA-03", "unconfirmed", CARD_BD, TEXT_MUTE), ("FA-04", "normal", TEAL_BG2, TEAL_TX2),
@@ -802,29 +866,29 @@ for i, (slot, status, fill, txc) in enumerate(fac_status):
     row = i // 3
     x = rw2_x + col * (fg_w + fg_gap)
     y = fg_y + row * (fg_h + fg_gap)
-    add_rect(s9, x, y, fg_w, fg_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
+    add_rect(s10, x, y, fg_w, fg_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
               shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
-    add_rect(s9, x, y, fg_w, Inches(0.06), fill=fill)
-    add_text(s9, x + Inches(0.12), y + Inches(0.14), fg_w - Inches(0.24), Inches(0.24),
+    add_rect(s10, x, y, fg_w, Inches(0.06), fill=fill)
+    add_text(s10, x + Inches(0.12), y + Inches(0.14), fg_w - Inches(0.24), Inches(0.24),
               slot, size=10.5, color=NAVY, bold=True)
-    add_pill(s9, x + Inches(0.12), y + Inches(0.44), fg_w - Inches(0.24), Inches(0.26),
+    add_pill(s10, x + Inches(0.12), y + Inches(0.44), fg_w - Inches(0.24), Inches(0.26),
              status, fill=fill, text_color=txc, size=8.0)
 
 fac_note_y = fg_y + fg_h * 2 + fg_gap + Inches(0.16)
-add_text(s9, rw2_x, fac_note_y, rw2_w, Inches(0.8),
+add_text(s10, rw2_x, fac_note_y, rw2_w, Inches(0.8),
           "탐지 성공 → status 그대로 기록 / 탐지 실패 → 슬롯을 비우지 않고 \"unconfirmed\"로 명시.\n"
           "위치가 고정되어 있다는 사전 지식을 활용해 항상 6개 슬롯을 채워, \"시설물 누락\" 감점을 원천 차단합니다.",
           size=9.0, color=TEXT_GRAY, line_spacing=1.3)
 
 
 # =====================================================================
-# SLIDE 10 : 데이터 신뢰성 & 자동 검증
+# SLIDE 11 : 데이터 신뢰성 & 자동 검증
 # =====================================================================
-s10 = prs.slides.add_slide(blank)
-set_bg(s10, BG)
-header_footer(s10, "10", "src/validator.py · report_generator.py · requirements.txt 기준", "DATA RELIABILITY")
+s11 = prs.slides.add_slide(blank)
+set_bg(s11, BG)
+header_footer(s11, "11", "src/validator.py · report_generator.py · requirements.txt 기준", "DATA RELIABILITY")
 title_block(
-    s10,
+    s11,
     "전송 전 6가지 자동 QA로 사람의 실수를 코드가 대신 잡습니다",
     "validator.py 6종 체크 + LLM 안전장치(환각 차단) + 검증된 오픈소스 기술 스택"
 )
@@ -846,28 +910,28 @@ for i, text in enumerate(checks):
     row = i // 2
     x = MX + col * (chk_w + chk_gap)
     y = chk_y + row * (chk_h + Inches(0.12))
-    add_rect(s10, x, y, chk_w, chk_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
+    add_rect(s11, x, y, chk_w, chk_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
               shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
-    add_icon(s10, MSO_SHAPE.OVAL, x + Inches(0.14), y + chk_h / 2 - Inches(0.13), Inches(0.26), Inches(0.26),
+    add_icon(s11, MSO_SHAPE.OVAL, x + Inches(0.14), y + chk_h / 2 - Inches(0.13), Inches(0.26), Inches(0.26),
               fill=ramp(i, 6))
-    add_text(s10, x + Inches(0.14), y + chk_h / 2 - Inches(0.13), Inches(0.26), Inches(0.26),
+    add_text(s11, x + Inches(0.14), y + chk_h / 2 - Inches(0.13), Inches(0.26), Inches(0.26),
               str(i + 1), size=10, color=WHITE, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    add_text(s10, x + Inches(0.52), y, chk_w - Inches(0.66), chk_h,
+    add_text(s11, x + Inches(0.52), y, chk_w - Inches(0.66), chk_h,
               text, size=9.6, color=NAVY, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.1)
 
 llm_y = chk_y + 3 * (chk_h + Inches(0.12)) + Inches(0.06)
-add_rect(s10, MX, llm_y, CW, Inches(0.72), fill=NAVY_DEEP, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
-add_pill(s10, MX + Inches(0.2), llm_y + Inches(0.13), Inches(1.7), Inches(0.26),
+add_rect(s11, MX, llm_y, CW, Inches(0.72), fill=NAVY_DEEP, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
+add_pill(s11, MX + Inches(0.2), llm_y + Inches(0.13), Inches(1.7), Inches(0.26),
          "LLM 안전장치", fill=TEAL, text_color=WHITE, size=8.4)
-add_text(s10, MX + Inches(2.05), llm_y + Inches(0.10), CW - Inches(2.3), Inches(0.52),
-          "보고시각·개수·가용길이·상태는 코드가 먼저 확정해 \"사실\"로 주입 — LLM은 문장 생성만 담당(수치 환각 차단). "
+add_text(s11, MX + Inches(2.05), llm_y + Inches(0.10), CW - Inches(2.3), Inches(0.52),
+          "보고시각·개수·가용길이·상태는 코드가 먼저 확정해 \"사실\"로 주입 — Claude API는 문장 생성만 담당(수치 환각 차단). "
           "응답 타임아웃 8초, 실패 시 결정론적 템플릿으로 자동 폴백.",
           size=9.1, color=WHITE, line_spacing=1.2, anchor=MSO_ANCHOR.MIDDLE)
 
 stack_y = llm_y + Inches(0.72) + Inches(0.24)
-add_text(s10, MX, stack_y, CW, Inches(0.26), "검증된 기술 스택", size=11, color=NAVY, bold=True)
+add_text(s11, MX, stack_y, CW, Inches(0.26), "검증된 기술 스택", size=11, color=NAVY, bold=True)
 techs = ["Python 3.12", "OpenCV (cv2.aruco)", "NumPy", "Ultralytics YOLO11n",
-         "PyTorch + CUDA", "watchdog", "Ollama qwen2.5:7b", "requests"]
+         "PyTorch + CUDA", "watchdog", "Anthropic Claude API", "requests"]
 tx = MX
 ty = stack_y + Inches(0.36)
 for i, t in enumerate(techs):
@@ -875,18 +939,18 @@ for i, t in enumerate(techs):
     if tx + w > MX + CW:
         tx = MX
         ty += Inches(0.4)
-    add_pill(s10, tx, ty, w, Inches(0.32), t, fill=TEAL_TINT, text_color=TEAL_DK, size=8.6)
+    add_pill(s11, tx, ty, w, Inches(0.32), t, fill=TEAL_TINT, text_color=TEAL_DK, size=8.6)
     tx += w + Inches(0.14)
 
 
 # =====================================================================
-# SLIDE 11 : 임무 수행 전략  (발표평가 "임무 수행 전략" 대응)
+# SLIDE 12 : 임무 수행 전략  (발표평가 "임무 수행 전략" 대응)
 # =====================================================================
-s11 = prs.slides.add_slide(blank)
-set_bg(s11, BG)
-header_footer(s11, "11", "공통운영규칙 경기시간 규정(대기1분·준비1분·임무3분) 기준", "MISSION STRATEGY")
+s12 = prs.slides.add_slide(blank)
+set_bg(s12, BG)
+header_footer(s12, "12", "공통운영규칙 경기시간 규정(대기1분·준비1분·임무3분) 기준", "MISSION STRATEGY")
 title_block(
-    s11,
+    s12,
     "대기 1분 · 준비 1분 · 임무 3분 — 초 단위로 설계한 실행 전략",
     "경기 규정(총 5분·300초)에 맞춰 무엇을 언제 하는지 미리 확정했습니다"
 )
@@ -907,10 +971,10 @@ segments = [
 sx = MX
 for label, units, fill, txc, desc in segments:
     w = unit_w * units
-    add_rect(s11, sx, bar_y, w, bar_h, fill=fill, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
-    add_text(s11, sx, bar_y, w, bar_h, label, size=13, color=txc, bold=True,
+    add_rect(s12, sx, bar_y, w, bar_h, fill=fill, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
+    add_text(s12, sx, bar_y, w, bar_h, label, size=13, color=txc, bold=True,
               align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    add_text(s11, sx, bar_y + bar_h + Inches(0.14), w, Inches(0.6),
+    add_text(s12, sx, bar_y + bar_h + Inches(0.14), w, Inches(0.6),
               desc, size=9.1, color=TEXT_GRAY, align=PP_ALIGN.CENTER, line_spacing=1.15)
     sx += w + seg_gap
 
@@ -925,26 +989,26 @@ stats6 = [
 sn = len(stats6)
 sgap = Inches(0.24)
 sw = int((CW - sgap * (sn - 1)) / sn)
-add_text(s11, MX, stat_y - Inches(0.38), CW, Inches(0.3), "3분 대응 핵심 전략", size=13, color=NAVY, bold=True)
+add_text(s12, MX, stat_y - Inches(0.38), CW, Inches(0.3), "3분 대응 핵심 전략", size=13, color=NAVY, bold=True)
 for i, (head, desc) in enumerate(stats6):
     x = MX + i * (sw + sgap)
-    add_rect(s11, x, stat_y, sw, stat_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
+    add_rect(s12, x, stat_y, sw, stat_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
               shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.07)
-    add_rect(s11, x, stat_y, Inches(0.06), stat_h, fill=ramp(i, 4))
-    add_text(s11, x + Inches(0.2), stat_y + Inches(0.16), sw - Inches(0.36), Inches(0.5),
+    add_rect(s12, x, stat_y, Inches(0.06), stat_h, fill=ramp(i, 4))
+    add_text(s12, x + Inches(0.2), stat_y + Inches(0.16), sw - Inches(0.36), Inches(0.5),
               head, size=11, color=NAVY, bold=True, line_spacing=1.05)
-    add_text(s11, x + Inches(0.2), stat_y + Inches(0.68), sw - Inches(0.36), Inches(1.0),
+    add_text(s12, x + Inches(0.2), stat_y + Inches(0.68), sw - Inches(0.36), Inches(1.0),
               desc, size=9.0, color=TEXT_GRAY, line_spacing=1.2)
 
 
 # =====================================================================
-# SLIDE 12 : 마무리 (요약 & 질의응답 대비)
+# SLIDE 13 : 마무리 (요약 & 질의응답 대비)
 # =====================================================================
-s12 = prs.slides.add_slide(blank)
-set_bg(s12, BG)
-header_footer(s12, "12", "readme.md 알려진 한계 섹션 기준", "SUMMARY")
+s13 = prs.slides.add_slide(blank)
+set_bg(s13, BG)
+header_footer(s13, "13", "readme.md 알려진 한계 섹션 기준", "SUMMARY")
 title_block(
-    s12,
+    s13,
     "정리하면",
     "27시간의 시행착오로 완성한 3가지 핵심 — 좌표 통일 · 무중단 설계 · 규정 정면 대응"
 )
@@ -953,7 +1017,7 @@ sum_y = Inches(2.55)
 sum_h = Inches(1.75)
 summary_cards = [
     ("좌표계 통일", MSO_SHAPE.DIAMOND, "ArUco 호모그래피로 모든 탐지·분류의\n기준 좌표를 하나로 정렬"),
-    ("무중단 설계", MSO_SHAPE.HEXAGON, "시설물 6슬롯 강제 매핑 + 로컬LLM·\n오프라인 폴백으로 임무 절대 중단 없음"),
+    ("무중단 설계", MSO_SHAPE.HEXAGON, "시설물 6슬롯 강제 매핑 + Claude API·\n오프라인 폴백으로 임무 절대 중단 없음"),
     ("규정 정면 대응", MSO_SHAPE.UP_ARROW, "3분 제한 · 100자 제약 · 8종 JSON 스펙\n모두 코드 로직으로 직접 구현"),
 ]
 sn2 = len(summary_cards)
@@ -961,31 +1025,31 @@ sgap2 = Inches(0.24)
 sw2 = int((CW - sgap2 * (sn2 - 1)) / sn2)
 for i, (head, shape, desc) in enumerate(summary_cards):
     x = MX + i * (sw2 + sgap2)
-    add_rect(s12, x, sum_y, sw2, sum_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
+    add_rect(s13, x, sum_y, sw2, sum_h, fill=CARD_BG, line=CARD_BD, line_w=0.75,
               shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.07)
     dia = Inches(0.5)
-    add_icon(s12, MSO_SHAPE.OVAL, x + Inches(0.18), sum_y + Inches(0.18), dia, dia, fill=ramp(i, 3))
-    add_icon(s12, shape, x + Inches(0.30), sum_y + Inches(0.30), dia - Inches(0.24), dia - Inches(0.24), fill=WHITE)
-    add_text(s12, x + Inches(0.18), sum_y + Inches(0.78), sw2 - Inches(0.36), Inches(0.3),
+    add_icon(s13, MSO_SHAPE.OVAL, x + Inches(0.18), sum_y + Inches(0.18), dia, dia, fill=ramp(i, 3))
+    add_icon(s13, shape, x + Inches(0.30), sum_y + Inches(0.30), dia - Inches(0.24), dia - Inches(0.24), fill=WHITE)
+    add_text(s13, x + Inches(0.18), sum_y + Inches(0.78), sw2 - Inches(0.36), Inches(0.3),
               head, size=13, color=NAVY, bold=True)
-    add_text(s12, x + Inches(0.18), sum_y + Inches(1.10), sw2 - Inches(0.36), Inches(0.6),
+    add_text(s13, x + Inches(0.18), sum_y + Inches(1.10), sw2 - Inches(0.36), Inches(0.6),
               desc, size=9.1, color=TEXT_GRAY, line_spacing=1.2)
 
 # 알려진 한계 & 향후 계획
 lim_y = Inches(4.55)
 lim_h = Inches(0.95)
-add_rect(s12, MX, lim_y, CW, lim_h, fill=TEAL_TINT, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
-add_text(s12, MX + Inches(0.22), lim_y + Inches(0.13), Inches(3.4), Inches(0.28),
+add_rect(s13, MX, lim_y, CW, lim_h, fill=TEAL_TINT, shape_type=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
+add_text(s13, MX + Inches(0.22), lim_y + Inches(0.13), Inches(3.4), Inches(0.28),
           "알려진 한계 & 향후 계획", size=11, color=TEAL_DK, bold=True)
 lim_text = ("· zone 경계에 걸친 물체는 그리드 분할 특성상 분리 탐지될 수 있음 → overlap(SAHI) 적용 검토\n"
             "· 조명 조건에 민감한 화재 판정 임계값 → 실전 데이터 축적으로 지속 보정 예정")
-add_text(s12, MX + Inches(0.22), lim_y + Inches(0.42), CW - Inches(0.44), Inches(0.5),
+add_text(s13, MX + Inches(0.22), lim_y + Inches(0.42), CW - Inches(0.44), Inches(0.5),
           lim_text, size=9.5, color=NAVY, line_spacing=1.25)
 
 # 클로징
-add_text(s12, MX, Inches(5.85), CW, Inches(0.7), "감사합니다", size=32, color=NAVY, bold=True,
+add_text(s13, MX, Inches(5.85), CW, Inches(0.7), "감사합니다", size=32, color=NAVY, bold=True,
           align=PP_ALIGN.CENTER)
-add_text(s12, MX, Inches(6.55), CW, Inches(0.35), "Team bongbong7 · 제8회 공군 해커톤 AI경진대회",
+add_text(s13, MX, Inches(6.55), CW, Inches(0.35), "Team bongbong7 · 제8회 공군 해커톤 AI경진대회",
           size=11, color=TEXT_GRAY, align=PP_ALIGN.CENTER)
 
 
