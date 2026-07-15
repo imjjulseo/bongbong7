@@ -172,7 +172,7 @@ FACILITY_BACKEND = "yolo"        # "classical" | "yolo" - 시설물 상태(norma
 # 이쪽이 실제 영상 기준으로 더 정확함이 확인됨. yolo11n_object.pt는 재학습 전까지 보류.
 # 클래스 순서는 알파벳순(0:big,1:cluster,2:dumb,3:medium,4:missile,5:small)을 그대로 따름.
 # 나중에 다른 학습 데이터셋을 쓸 경우 반드시 그 data.yaml의 names 순서와 다시 맞출 것.
-YOLO_OBJECT_WEIGHTS = "models/yolov8n_object_v2.pt"
+YOLO_OBJECT_WEIGHTS = "models/yolo11n_object_final.pt"
 YOLO_OBJECT_CONF_THRESHOLD = 0.4
 # 학습 클래스 idx -> (category, subtype[영문 코드=JSON 출력값]). data.yaml의 names 순서와 반드시 일치시킬 것.
 YOLO_OBJECT_CLASS_MAP = {
