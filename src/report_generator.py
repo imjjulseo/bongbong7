@@ -24,7 +24,6 @@ JSON 결과를 대시보드로 전송하는 단계(6단계) 자체가 인터넷 
 GEMINI_API_KEY 환경변수에 Google AI Studio(https://aistudio.google.com/apikey)에서
 발급받은 무료 API 키를 설정해야 합니다(코드에 직접 적지 말 것).
 """
-import json
 import os
 import requests
 from datetime import datetime
@@ -34,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 import field_config as fc
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-flash-lite-latest"  # "-latest" 별칭 사용: 구체적 버전 모델명은 신규 사용자에게 종종 폐기/차단됨
 GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 REQUEST_TIMEOUT_SEC = 8        # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
 
@@ -63,24 +62,33 @@ def _prepare_facts(summary: dict) -> dict:
 
 
 REPORT_SYSTEM_PROMPT = f"""당신은 공군 전투피해평가(BDA) 보고서를 작성하는 참모 장교입니다.
-아래 [확정 사실]에 적힌 내용만 사용해서 한국어 상황보고 한 문장을 작성하세요.
+아래 [확정 사실]에 적힌 값만 사용해서 한국어 상황보고 한 문장을 작성하세요.
 - 반드시 포함할 내용: 보고 시각, 활주로구역 폭파구 개수, 활주로 가용길이, 상태, 운용여부.
 - "폭파구"는 반드시 이 두 글자 그대로 쓰세요("폭발구", "파괴구" 등 다른 표현으로 바꾸지 마세요).
-- runway_status, runway_availability의 핵심 문구 자체는 절대 바꾸지 말고 원문 그대로 넣으세요.
-  문장을 자연스럽게 끝맺기 위해 뒤에 서술어를 붙이는 것은 괜찮습니다.
-  단, "사용 가능 여부 검토"에는 반드시 "~가 필요합니다"를 붙여
-  "사용 가능 여부 검토가 필요합니다"처럼 쓰세요 ("~검토 중입니다"는 쓰지 마세요).
+- [확정 사실]의 "상태", "운용여부" 항목은 그 뒤에 적힌 값(문구)을 절대 바꾸지 말고 원문
+  그대로 문장에 넣으세요. "상태", "운용여부"라는 항목 이름 자체를 문장에 쓰면 안 됩니다 -
+  그 항목 뒤에 적힌 실제 값만 써야 합니다(예: 항목이 "상태: 비상 운용"이면 문장에는
+  "비상 운용"이라고만 쓰고 "상태"라는 단어는 쓰지 마세요).
+  문장을 자연스럽게 끝맺기 위해 값 뒤에 서술어를 붙이는 것은 괜찮습니다.
+  단, 운용여부 값이 정확히 "사용 가능 여부 검토"일 때만 반드시 "~가 필요합니다"를
+  붙여 "사용 가능 여부 검토가 필요합니다"처럼 쓰세요 ("~검토 중입니다"는 쓰지 마세요).
+  운용여부 값이 "사용 가능", "제한적 사용 가능", "사용 불가(폐쇄)"처럼 다른 값이면
+  이 서술어를 붙이지 말고 그 값만으로 자연스럽게 문장을 끝내세요 - 두 문구를 같이
+  섞어서 쓰면 안 됩니다.
 - [확정 사실]에 없는 내용(시설물 피해, 불발탄 등 확인되지 않은 정보)은 절대 추가하지 마세요.
 - 공백 포함 {fc.REPORT_MAX_CHARS}자를 절대 넘기지 마세요.
 - 반드시 한국어 문장만 출력하고, 다른 설명이나 따옴표는 붙이지 마세요."""
 
 
 def _build_prompt(facts: dict) -> str:
-    return (
-        f"{REPORT_SYSTEM_PROMPT}\n\n"
-        f"[확정 사실]\n{json.dumps(facts, ensure_ascii=False, indent=2)}\n\n"
-        f"[보고서]"
+    facts_text = (
+        f"- 보고 시각: {facts['report_time']}\n"
+        f"- 활주로구역 폭파구 개수: {facts['runway_crater_count']}개\n"
+        f"- 활주로 가용길이: {_format_length_m(facts['runway_available_length_m'])}m\n"
+        f"- 상태: {facts['runway_status']}\n"
+        f"- 운용여부: {facts['runway_availability']}"
     )
+    return f"{REPORT_SYSTEM_PROMPT}\n\n[확정 사실]\n{facts_text}\n\n[보고서]"
 
 
 def _enforce_length(text: str) -> str:
@@ -136,7 +144,7 @@ def generate_report_via_gemini(summary: dict, model: str = GEMINI_MODEL) -> str:
     }
     resp = requests.post(
         GEMINI_URL_TEMPLATE.format(model=model),
-        params={"key": GEMINI_API_KEY},
+        headers={"x-goog-api-key": GEMINI_API_KEY},  # 쿼리 파라미터로 넘기면 에러 메시지/로그에 키가 그대로 노출됨
         json=payload,
         timeout=REQUEST_TIMEOUT_SEC,
     )
