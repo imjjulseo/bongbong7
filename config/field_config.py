@@ -40,8 +40,24 @@ ARUCO_MARKER_CORNER_INDEX = {
     1: 0,  # ID 1번 마커는 우상단(TR) 코너를 경기장 모서리로 사용
     2: 1,  # ID 2번 마커는 우하단(BR) 코너를 경기장 모서리로 사용
     3: 3,  # ID 3번 마커는 좌하단(BL) 코너를 경기장 모서리로 사용
-    4: 2, 
+    4: 2,
 }
+
+# 2026-07-15 파라미터 스윕으로 확정(test_images 30장 랜덤샘플 + failed_aruco 저대비/역광
+# 영상 75프레임 기준). cv2.aruco.DetectorParameters 기본값 대비:
+#   - 일반 영상: 4마커 전체 검출 성공률 60.0% -> 73.3%
+#   - 저대비/역광 영상: 8.0% -> 28.0% (나머지 실패분은 파라미터로 해결 불가 - 마커 자체가
+#     프레임 밖으로 나가거나 완전히 가려진 케이스로 확인됨, calibration.py 쪽 fallback 필요)
+# ArUco 검출기의 폴리곤 근사/적응형 이진화 윈도우를 완화해 흐릿하거나 부분적으로 왜곡된
+# 마커도 더 잘 잡아내도록 함.
+ARUCO_POLYGONAL_APPROX_ACCURACY_RATE = 0.05
+ARUCO_ADAPTIVE_THRESH_WIN_SIZE_MIN = 3
+ARUCO_ADAPTIVE_THRESH_WIN_SIZE_MAX = 53
+ARUCO_ADAPTIVE_THRESH_WIN_SIZE_STEP = 4
+
+# 검출 전 그레이스케일 이미지에 적용하는 감마 보정(어둡게). 저대비/역광 영상에서 마커
+# 패턴의 흑백 대비를 살려줌 - 일반 영상에서는 성공률에 부작용 없음을 교차검증으로 확인함.
+ARUCO_PREPROCESS_GAMMA = 2.5
 
 # ---------------------------------------------------------
 # 3. 구역/구간 레이아웃 (이미지 18 기준)
