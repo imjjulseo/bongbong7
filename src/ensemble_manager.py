@@ -47,8 +47,8 @@ class VideoEnsembleManager:
         # [앙상블 룰 1] 측면 뷰 필수 시설물 (FA-01) 무조건 SIDE 뷰 우선
         # -> 최신이 TOP이고, 이전이 SIDE라면 SIDE(이전)의 결과를 강제로 가져옴
         if latest_angle == "TOP_VIEW" and prev_angle == "SIDE_VIEW":
-            latest_facilities = latest_result.get("facility_status", {}).get("facilities", [])
-            prev_facilities = prev_result.get("facility_status", {}).get("facilities", [])
+            latest_facilities = latest_result.get("facility_status", {}).get("facility_status", [])
+            prev_facilities = prev_result.get("facility_status", {}).get("facility_status", [])
             
             # 이전 결과에서 FA-01의 상태를 추출
             prev_side_status = {f["zone"]: f["status"] for f in prev_facilities if f["zone"] in self.SIDE_DEPENDENT_FACILITIES}
@@ -59,8 +59,8 @@ class VideoEnsembleManager:
 
         # [앙상블 룰 1'] 위쪽 뷰 필수 시설물 (FA-03)
         if latest_angle == "SIDE_VIEW" and prev_angle == "TOP_VIEW":
-            latest_facilities = latest_result.get("facility_status", {}).get("facilities", [])
-            prev_facilities = prev_result.get("facility_status", {}).get("facilities", [])
+            latest_facilities = latest_result.get("facility_status", {}).get("facility_status", [])
+            prev_facilities = prev_result.get("facility_status", {}).get("facility_status", [])
             
             # 이전 결과에서 FA-03의 상태를 추출
             prev_top_status = {f["zone"]: f["status"] for f in prev_facilities if f["zone"] in self.TOP_DEPENDENT_FACILITIES}
