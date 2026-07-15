@@ -3,8 +3,8 @@
 report_generator.py
 ====================
 5단계: 생성형 AI(LLM)로 정찰 결과를 종합해 상황보고서 한 문장을 자동 생성합니다.
-대회 규정상 사용 모델 종류에는 제한이 없으나(현장 안내 기준), 인터넷이 불안정한 대회 현장
-환경을 고려해 기본값은 로컬 Ollama(http://localhost:11434)로 둡니다.
+JSON 결과를 대시보드로 전송하는 단계(6단계) 자체가 인터넷 연결을 필요로 하므로,
+보고서 생성도 온라인 API(Gemini)를 기본값으로 씁니다.
 
 대회 규정(안내받은 내용 기준):
   - 탐지 결과를 기반으로 자동 생성해야 하며, 확인되지 않은 내용은 포함하지 않음.
@@ -18,19 +18,24 @@ report_generator.py
 사실"로 넘깁니다 - LLM은 그 사실을 규정된 글자수 안에서 자연스러운 한국어 문장으로 표현하는
 역할만 담당합니다(LLM이 수치를 스스로 계산/추측하게 하면 오류 위험이 있으므로).
 
-안전장치: LLM 서버가 응답하지 않을 경우(설치 안됨/타임아웃 등) 자동으로 결정론적 템플릿
-생성으로 폴백합니다 -> LLM이 죽어도 임무는 절대 실패하지 않습니다.
+안전장치: Gemini API 호출이 실패할 경우(키 미설정/네트워크 오류/타임아웃/요청한도 초과 등)
+자동으로 결정론적 템플릿 생성으로 폴백합니다 -> API가 죽어도 임무는 절대 실패하지 않습니다.
+
+GEMINI_API_KEY 환경변수에 Google AI Studio(https://aistudio.google.com/apikey)에서
+발급받은 무료 API 키를 설정해야 합니다(코드에 직접 적지 말 것).
 """
 import json
+import os
 import requests
 from datetime import datetime
 
-import sys, os
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 import field_config as fc
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:7b-instruct"   # 대회 PC 사양에 맞춰 사전에 벤치마크 후 결정
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 REQUEST_TIMEOUT_SEC = 8        # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
 
 
@@ -91,27 +96,12 @@ def _enforce_length(text: str) -> str:
     return text
 
 
-def generate_report_via_local_llm(summary: dict, model: str = OLLAMA_MODEL) -> str:
+def _validate_llm_text(text: str, facts: dict) -> str:
     """
-    로컬 Ollama 서버에 요청. 실패하면 예외를 던짐 (호출부에서 폴백 처리).
     LLM이 "폭파구"를 "폭발구"로 오타내거나 상태/운용여부 문구를 임의로 바꿔버릴 위험이
     있으므로, 생성된 문장에 이 핵심 용어들이 원문 그대로 포함되어 있는지 검증하고 - 아니면
     규정 위반/오타로 보고 예외를 던져 템플릿으로 폴백시킨다.
     """
-    facts = _prepare_facts(summary)
-    prompt = _build_prompt(facts)
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.2},  # 보고서이므로 창의성보다 일관성 우선
-    }
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=REQUEST_TIMEOUT_SEC)
-    resp.raise_for_status()
-    data = resp.json()
-    text = data.get("response", "").strip()
-    if not text:
-        raise RuntimeError("로컬 LLM이 빈 응답을 반환했습니다.")
     text = _enforce_length(text)
     if "폭파구" not in text:
         raise RuntimeError(f"LLM이 '폭파구' 용어를 그대로 쓰지 않음: {text!r}")
@@ -131,6 +121,36 @@ def generate_report_via_local_llm(summary: dict, model: str = OLLAMA_MODEL) -> s
     return text
 
 
+def generate_report_via_gemini(summary: dict, model: str = GEMINI_MODEL) -> str:
+    """
+    Gemini API(무료 티어)에 요청. 키 미설정/네트워크 오류/요청한도 초과 등 어떤 이유로든
+    실패하면 예외를 던짐 (호출부에서 템플릿으로 폴백 처리).
+    """
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
+    facts = _prepare_facts(summary)
+    prompt = _build_prompt(facts)
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2},  # 보고서이므로 창의성보다 일관성 우선
+    }
+    resp = requests.post(
+        GEMINI_URL_TEMPLATE.format(model=model),
+        params={"key": GEMINI_API_KEY},
+        json=payload,
+        timeout=REQUEST_TIMEOUT_SEC,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError):
+        raise RuntimeError(f"Gemini 응답 형식이 예상과 다름: {data!r}")
+    if not text:
+        raise RuntimeError("Gemini가 빈 응답을 반환했습니다.")
+    return _validate_llm_text(text, facts)
+
+
 def generate_report_offline_template(summary: dict) -> str:
     """
     LLM 없이도 항상 동작하는 결정론적(deterministic) 보고서 생성기.
@@ -148,15 +168,15 @@ def generate_report_offline_template(summary: dict) -> str:
 
 def generate_report(summary: dict, use_llm: bool = True) -> dict:
     """
-    메인 진입점. LLM 시도 -> 실패 시 템플릿 폴백.
-    반환: {"text": str, "source": "local_llm" | "offline_template"}
+    메인 진입점. Gemini 시도 -> 실패 시 템플릿 폴백.
+    반환: {"text": str, "source": "gemini" | "offline_template"}
     """
     if use_llm:
         try:
-            text = generate_report_via_local_llm(summary)
-            return {"text": text, "source": "local_llm"}
+            text = generate_report_via_gemini(summary)
+            return {"text": text, "source": "gemini"}
         except Exception as e:
-            # 네트워크 차단/서버 미실행/타임아웃 등 어떤 이유든 조용히 폴백
+            # 키 미설정/네트워크 오류/요청한도 초과 등 어떤 이유든 조용히 폴백
             fallback_text = generate_report_offline_template(summary)
             return {"text": fallback_text, "source": f"offline_template (llm_error: {e})"}
     else:

@@ -51,9 +51,10 @@
 5. **시설물 6슬롯 강제 매핑**: 시설물 위치가 고정되어 있다는 사전 지식을 이용해,
    탐지에 실패해도 슬롯 자체는 항상 6개가 채워집니다('unconfirmed'로 표시) →
    "시설물 누락" 감점을 원천 차단합니다.
-6. **로컬 LLM + 오프라인 폴백**: 클라우드 API 키가 없으므로 로컬 LLM(Ollama 등)을
-   우선 시도하되, 실패하면 결정론적 템플릿으로 자동 전환되어 임무가 절대
-   중단되지 않습니다. 두 경로 모두 50~100자 글자수 제약을 강제 적용합니다.
+6. **Gemini API + 오프라인 폴백**: JSON 결과 전송(6단계) 자체가 인터넷 연결을 필요로
+   하므로 보고서도 온라인 API(Gemini)를 우선 시도하되, 실패하면(키 미설정/네트워크
+   오류/요청한도 초과 등) 결정론적 템플릿으로 자동 전환되어 임무가 절대 중단되지
+   않습니다. 두 경로 모두 50~100자 글자수 제약을 강제 적용합니다.
 7. **자동 검증(QA)**: 전송 전 JSON 정합성(개수 일치, 슬롯 누락, 글자수 제약 등)을
    자동 점검합니다.
 8. **고전 CV ↔ YOLO11n 백엔드 전환**: 탐지/분류 로직을 공통 인터페이스로 감싸,
@@ -135,38 +136,27 @@ python tests/test_core.py
 # 또는: python -m pytest tests/ -v
 ```
 
-## 로컬 LLM(Ollama) 설치 방법
+## Gemini API 설정 방법
 
-`report_generator.py`는 기본적으로 로컬 Ollama(`http://localhost:11434`)를 사용해
-상황보고서를 생성합니다. 설치가 안 되어 있으면 자동으로 오프라인 템플릿으로 폴백되므로
-임무 자체는 실패하지 않지만, LLM 문장을 쓰려면 아래대로 설치해야 합니다.
+`report_generator.py`는 기본적으로 Gemini API(무료 티어)를 사용해 상황보고서를
+생성합니다. 키가 없으면 자동으로 오프라인 템플릿으로 폴백되므로 임무 자체는
+실패하지 않지만, LLM 문장을 쓰려면 아래대로 API 키를 설정해야 합니다.
 
-### 1) Ollama 설치
-- **Windows**: PowerShell에서
-  ```powershell
-  winget install --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements
-  ```
-  (또는 https://ollama.com/download 에서 설치 파일 직접 다운로드)
-- **macOS**: https://ollama.com/download 에서 다운로드하거나 `brew install ollama`
-- **Linux**: `curl -fsSL https://ollama.com/install.sh | sh`
+### 1) API 키 발급
+https://aistudio.google.com/apikey 에서 Google 계정으로 로그인 후 무료로 발급받습니다.
 
-설치 후 Ollama 앱(또는 `ollama serve`)이 실행 중이어야 `localhost:11434`가 응답합니다.
-설치 프로그램이 보통 백그라운드 서비스로 자동 등록하므로 재부팅해도 자동 실행됩니다.
+### 2) 환경변수 설정
+코드에 키를 직접 적지 말고 `GEMINI_API_KEY` 환경변수로 설정합니다.
+- **Windows(PowerShell)**: `$env:GEMINI_API_KEY = "발급받은키"`
+- **macOS/Linux**: `export GEMINI_API_KEY="발급받은키"`
 
-### 2) 모델 다운로드
-```bash
-ollama pull qwen2.5:7b-instruct
-```
-`report_generator.py`의 `OLLAMA_MODEL` 기본값과 이름이 일치해야 합니다. 대회 PC 사양이
-낮으면 더 가벼운 `qwen2.5:3b`로 바꿔도 됩니다(`OLLAMA_MODEL` 값만 수정).
+대회 PC에서 재부팅 후에도 유지하려면 시스템 환경변수로 등록해두세요.
 
 ### 3) 정상 동작 확인
-```bash
-curl http://localhost:11434/api/tags
-```
-설치된 모델 목록이 JSON으로 나오면 정상입니다. 이후 `python scripts/run_mission.py --synthetic`을
-실행했을 때 결과 출력의 "보고서(local_llm)"처럼 `local_llm`으로 표시되면 실제 LLM이 쓰인 것이고,
-`offline_template`으로 표시되면 (Ollama 미설치/미실행 등으로) 템플릿 폴백이 동작한 것입니다.
+`python scripts/run_mission.py --synthetic`을 실행했을 때 결과 출력의
+"보고서(gemini)"처럼 `gemini`로 표시되면 실제 API가 쓰인 것이고,
+`offline_template`으로 표시되면 (키 미설정/네트워크 오류 등으로) 템플릿 폴백이
+동작한 것입니다.
 
 ## 탐지 백엔드 전환 (고전 CV ↔ YOLO11n)
 
@@ -213,10 +203,9 @@ curl http://localhost:11434/api/tags
       대회 대시보드 스펙에 맞춰 확정 (현재는 스텁)
 - [ ] `WARP_PX_PER_CM`(탑뷰 워핑 해상도), `FRAME_EXTRACT_INTERVAL`(영상 프레임 추출 간격)을
       실제 드론 영상 해상도/fps에 맞춰 재조정
-- [ ] 로컬 LLM(Ollama 등) 사용 가능 여부와 사양을 **운영진에게 사전 확인** —
-      "생성형 AI API 키 미제공"이 클라우드 금지와 결합될 때 로컬 LLM이
-      규정 위반이 아닌지 반드시 확인 필요
-- [ ] 대회 PC 사양에서 로컬 LLM 모델(`report_generator.py`의 `OLLAMA_MODEL`) 속도 벤치마크
+- [ ] 대회 현장 인터넷 연결과 `GEMINI_API_KEY` 환경변수가 대회 PC에 설정되어 있는지
+      **사전 확인** — 네트워크가 끊기면 자동으로 오프라인 템플릿 폴백으로 동작함
+- [ ] 클라우드 생성형 AI API 사용이 대회 규정상 허용되는지 운영진에게 사전 확인
 - [ ] 실제 드론 촬영 영상으로 `dark_threshold`, `min_area_px` 등 탐지 파라미터 재조정
       (`detection.py`의 `detect_dark_blobs` 인자, 고전 CV 백엔드 기준)
 - [ ] 테스트 기간 중 촬영한 이미지가 쌓이면 `scripts/train_yolo.py`로 YOLO11n 학습 후
