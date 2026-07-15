@@ -23,6 +23,7 @@ import schemas
 import tiling
 from report_generator import generate_report_offline_template, _enforce_length
 from transmitter import transmit_all
+from pipeline import _enforce_count_bounds
 
 
 class TestRunwayLongestRun(unittest.TestCase):
@@ -181,17 +182,68 @@ class TestValidator(unittest.TestCase):
         facility_list = [{"zone": f["slot"], "status": f["status"]} for f in facilities]
         outputs = {
             "facility_status": schemas.build_facility_status_json(fc.MISSION_CODE, facility_list),
-            "crater_detect": schemas.build_crater_detect_json(fc.MISSION_CODE, []),
-            "crater_count": schemas.build_crater_count_json(fc.MISSION_CODE, 0),
+            "crater_detect": schemas.build_crater_detect_json(
+                fc.MISSION_CODE, [{"zone": "RW-01", "size": "small"}]
+            ),
+            "crater_count": schemas.build_crater_count_json(fc.MISSION_CODE, 1),
             "runway_status": schemas.build_runway_status_json(fc.MISSION_CODE, 300000),
-            "uxo_detect": schemas.build_uxo_detect_json(fc.MISSION_CODE, []),
-            "uxo_count": schemas.build_uxo_count_json(fc.MISSION_CODE, 0),
+            "uxo_detect": schemas.build_uxo_detect_json(
+                fc.MISSION_CODE, [{"zone": "RW-02", "type": "dumb"}]
+            ),
+            "uxo_count": schemas.build_uxo_count_json(fc.MISSION_CODE, 1),
             "report": schemas.build_report_json(
-                fc.MISSION_CODE, "활주로 가용길이 3000.0m로 이착륙 가능, 폭파구 0개, 시설물 전원 정상 확인됨."
+                fc.MISSION_CODE, "활주로 가용길이 3000.0m로 이착륙 가능, 폭파구 1개, 시설물 전원 정상 확인됨."
             ),
         }
         result = validate_all(outputs)
         self.assertTrue(result["ok"], msg=result["errors"])
+
+    def test_crater_detect_empty_is_rejected(self):
+        """crater_detect가 빈 배열이면 서버가 거부하므로 검증에서도 오류로 잡혀야 함"""
+        outputs = {
+            "crater_detect": schemas.build_crater_detect_json(fc.MISSION_CODE, []),
+        }
+        result = validate_all(outputs)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("crater_detect 건수" in e for e in result["errors"]))
+
+    def test_uxo_detect_over_max_is_rejected(self):
+        """uxo_detect가 서버 최대 허용치를 넘으면 검증에서 오류로 잡혀야 함"""
+        over = [{"zone": "RW-01", "type": "dumb"}] * (fc.UXO_DETECT_MAX_ENTRIES + 1)
+        outputs = {
+            "uxo_detect": schemas.build_uxo_detect_json(fc.MISSION_CODE, over),
+        }
+        result = validate_all(outputs)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("uxo_detect 건수" in e for e in result["errors"]))
+
+
+class TestEnforceCountBounds(unittest.TestCase):
+    def test_over_max_drops_lowest_confidence(self):
+        items = [{"segment": f"RW-{i:02d}", "type": "dumb", "confidence": c}
+                  for i, c in enumerate([0.9, 0.1, 0.5, 0.8, 0.3, 0.95, 0.2], start=1)]
+        bounded = _enforce_count_bounds(
+            items, "test_kind", min_entries=1, max_entries=3,
+            filler_factory=lambda: {"segment": "TW-B1", "type": "dumb", "confidence": 0.0},
+        )
+        self.assertEqual(len(bounded), 3)
+        self.assertEqual([d["confidence"] for d in bounded], [0.95, 0.9, 0.8])
+
+    def test_empty_gets_filled_to_min(self):
+        bounded = _enforce_count_bounds(
+            [], "test_kind", min_entries=1, max_entries=5,
+            filler_factory=lambda: {"segment": "TW-A1", "size_class": "small", "confidence": 0.0},
+        )
+        self.assertEqual(len(bounded), 1)
+        self.assertEqual(bounded[0]["segment"], "TW-A1")
+
+    def test_within_bounds_untouched(self):
+        items = [{"segment": "RW-01", "type": "dumb", "confidence": 0.5}]
+        bounded = _enforce_count_bounds(
+            items, "test_kind", min_entries=1, max_entries=5,
+            filler_factory=lambda: {"segment": "TW-A1", "type": "dumb", "confidence": 0.0},
+        )
+        self.assertEqual(bounded, items)
 
 
 class TestTransmitterStub(unittest.TestCase):

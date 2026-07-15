@@ -247,6 +247,14 @@ TRANSMIT_TIMEOUT_SEC = 5
 # 있습니다"). 초과분은 신뢰도(confidence) 낮은 순으로 잘라서 보냄(pipeline.py 참고).
 UXO_DETECT_MAX_ENTRIES = 6
 
+# crater_detect도 동일한 방식으로 서버가 최대 이 개수까지만 받음(초과 시 보고 전체 거부).
+CRATER_DETECT_MAX_ENTRIES = 5
+
+# crater_detect/uxo_detect 둘 다 빈 배열(0건)이면 서버가 거부함 - 탐지가 하나도 없어도
+# 최소 이 개수만큼은 채워서 보내야 함(pipeline.py의 _enforce_count_bounds 참고).
+CRATER_DETECT_MIN_ENTRIES = 1
+UXO_DETECT_MIN_ENTRIES = 1
+
 
 # ---------------------------------------------------------
 # 14. LLM 상황보고서 글자수 제약 (5단계) - 대회 규정: 공백 포함 100자 이내
