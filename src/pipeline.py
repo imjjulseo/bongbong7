@@ -136,7 +136,8 @@ class MissionPipeline:
         return {"start": start_doc, "saved_file": saved_file, "transmit_result": transmit_result}
 
     # -----------------------------------------------------------------
-    def run(self, frames_bgr: list, send_to_dashboard: bool = False, visualize: bool = False):
+    def run(self, frames_bgr: list, send_to_dashboard: bool = False, visualize: bool = False,
+            include_confidence: bool = False):
         """
         frames_bgr: watchdog/프레임 추출 단계에서 넘어온 여러 프레임(numpy BGR 이미지) 리스트
         send_to_dashboard: True면 6단계(전송)까지 실행. 기본은 파일 저장까지만.
@@ -144,6 +145,9 @@ class MissionPipeline:
             최종 결과(crater_detect/uxo_detect/facility_status)와 동일하게 시각화해
             output_dir/visualize.png로 저장합니다. 기본은 비활성(디버깅용, 매 실행마다 그릴
             필요는 없음).
+        include_confidence: True면 crater_detect/uxo_detect/facility_status의 각 항목에
+            "confidence" 필드를 추가로 넣습니다(앙상블용 임시 출력 - 실제 제출 포맷에는 없는
+            필드라 기본은 비활성이며, 대회 제출용 JSON은 이 옵션 없이 그대로 사용해야 함).
         반환: outputs 딕셔너리(7개 JSON, start.json 제외) + 저장된 파일 경로 목록 + 검증/전송 결과
 
         주의: start.json은 이 메서드가 아니라 send_start()가 세션 시작 시 1번만 담당합니다.
@@ -242,7 +246,9 @@ class MissionPipeline:
         self._toc("crater_postprocess")
 
         crater_list_out = [
-            {"zone": c["segment"], "size": c["size_class"]} for c in craters_bounded
+            {"zone": c["segment"], "size": c["size_class"],
+             **({"confidence": c["confidence"]} if include_confidence else {})}
+            for c in craters_bounded
         ]
         outputs["crater_detect"] = schemas.build_crater_detect_json(self.mission_code, crater_list_out)
         saved_files.append(self._save("crater_detect.json", outputs["crater_detect"]))
@@ -281,7 +287,11 @@ class MissionPipeline:
             status, conf = aggregate_temporal_status(frame_results)
             detections_by_slot[slot] = {"status": status, "confidence": conf}
         facilities = fca.build_facility_report(detections_by_slot)
-        facility_list_out = [{"zone": f["slot"], "status": f["status"]} for f in facilities]
+        facility_list_out = [
+            {"zone": f["slot"], "status": f["status"],
+             **({"confidence": f["confidence"]} if include_confidence else {})}
+            for f in facilities
+        ]
         outputs["facility_status"] = schemas.build_facility_status_json(self.mission_code, facility_list_out)
         saved_files.append(self._save("facility_status.json", outputs["facility_status"]))
         self._toc("facility_analysis")
@@ -305,7 +315,9 @@ class MissionPipeline:
         )
 
         uxo_list_out = [
-            {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped_sorted
+            {"zone": u["segment"], "type": u["type"],
+             **({"confidence": u["confidence"]} if include_confidence else {})}
+            for u in uxo_deduped_sorted
         ]
         outputs["uxo_detect"] = schemas.build_uxo_detect_json(self.mission_code, uxo_list_out)
         saved_files.append(self._save("uxo_detect.json", outputs["uxo_detect"]))
