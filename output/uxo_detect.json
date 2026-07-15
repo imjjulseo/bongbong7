@@ -10,12 +10,12 @@
       "type": "missile"
     },
     {
-      "zone": "TW-A1",
-      "type": "missile"
-    },
-    {
       "zone": "TW-B1",
       "type": "dumb"
+    },
+    {
+      "zone": "TW-A1",
+      "type": "missile"
     },
     {
       "zone": "RW-03",

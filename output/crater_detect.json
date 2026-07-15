@@ -6,12 +6,12 @@
       "size": "big"
     },
     {
-      "zone": "RW-04",
-      "size": "medium"
-    },
-    {
       "zone": "TW-B5",
       "size": "big"
+    },
+    {
+      "zone": "RW-04",
+      "size": "medium"
     },
     {
       "zone": "RW-06",

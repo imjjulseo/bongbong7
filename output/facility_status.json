@@ -3,7 +3,7 @@
   "facility_status": [
     {
       "zone": "FA-01",
-      "status": "destroy"
+      "status": "fire"
     },
     {
       "zone": "FA-02",
