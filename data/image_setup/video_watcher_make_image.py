@@ -34,7 +34,7 @@ current_file = Path(__file__).resolve()
 BASE_DIR = current_file.parent
 
 import field_config as fc
-from pipeline_make_image import MissionPipeline
+from pipeline_make_image import ImagePipeline
 
 
 def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2):
@@ -104,13 +104,21 @@ def process_video(video_path: str, args):
         print("[video_watcher] 추출된 프레임을 읽지 못해 파이프라인을 건너뜁니다.")
         return
 
-    pipeline = MissionPipeline(
+    pipeline = ImagePipeline(
         mission_code=fc.MISSION_CODE
     )
     global output_file_idx
-    result = pipeline.run(frames)
+    result, uncalibrated_result = pipeline.run(frames)
     for img, _ in result:
         folder = Path(args.output)
+        file_name = f"{output_file_idx}.png"
+        output_path = folder / file_name
+        cv2.imwrite(str(output_path), img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        output_file_idx += 1
+    
+    for img in uncalibrated_result:
+        folder = BASE_DIR / "video_output_uncalibrated"
+        folder.mkdir(parents=True, exist_ok=True)
         file_name = f"{output_file_idx}.png"
         output_path = folder / file_name
         cv2.imwrite(str(output_path), img, [cv2.IMWRITE_PNG_COMPRESSION, 0])

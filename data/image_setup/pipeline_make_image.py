@@ -45,7 +45,7 @@ from validator import validate_all
 from transmitter import transmit_all
 
 
-class MissionPipeline:
+class ImagePipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
                  output_dir: str = "output",
                  detector_backend: str = None, facility_backend: str = None):
@@ -60,8 +60,6 @@ class MissionPipeline:
         os.makedirs(output_dir, exist_ok=True)
 
         self.calibrator = FieldCalibrator()
-        self.object_detector = build_object_detector(detector_backend)
-        self.facility_classifier = build_facility_classifier(facility_backend)
 
         self.timing = {}
 
@@ -83,6 +81,7 @@ class MissionPipeline:
         """
         t_start = time.time()
         saved_files = []
+        uncalibrated_files = []
 
         # ---------------- 2단계 + 3-A/3-B: 프레임별 워핑 + 배치 추론 ----------------
         # 프레임마다 재보정하는 이유: 드론이 미세하게 움직이면 카메라 자세가 바뀌므로,
@@ -96,13 +95,14 @@ class MissionPipeline:
             try:
                 self.calibrator.calibrate_from_image(frame)
             except Exception:
+                uncalibrated_files.append(frame)
                 continue  # 첫 프레임부터 마커 검출 실패 -> 이 프레임은 건너뜀
             
             if rest_frames > 0:
                 rest_frames -= 1
                 continue
             else:
-                rest_frames = 5
+                rest_frames = 0
             
 
             # -- 마커 영역은 워핑 전에 미리 지워서 오탐 방지 (흑백 패턴이 어두운 물체로 오인될 수 있음) --
@@ -119,7 +119,7 @@ class MissionPipeline:
             saved_files.append((topview, px_per_cm))
 
 
-        return saved_files
+        return saved_files, uncalibrated_files
 
     # -----------------------------------------------------------------
     def _save(self, filename, data):

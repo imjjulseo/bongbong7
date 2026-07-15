@@ -88,7 +88,7 @@ def crop_facility_regions(input_folder, output_folder):
 
 if __name__ == "__main__":
     # 설정: 캘리브레이션된 원본 폴더와 분할 저장할 폴더명
-    INPUT_DIR = "calibrated_maps"       # 캘리브레이션된 원본 맵 폴더
+    INPUT_DIR = "reherse_1st_calibrated"       # 캘리브레이션된 원본 맵 폴더
     OUTPUT_DIR = "cropped_facilities"   # 6개씩 쪼개서 저장할 폴더
     
     crop_facility_regions(INPUT_DIR, OUTPUT_DIR)
