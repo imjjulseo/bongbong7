@@ -4,7 +4,7 @@ report_generator.py
 ====================
 5단계: 생성형 AI(LLM)로 정찰 결과를 종합해 상황보고서 한 문장을 자동 생성합니다.
 JSON 결과를 대시보드로 전송하는 단계(6단계) 자체가 인터넷 연결을 필요로 하므로,
-보고서 생성도 온라인 API(Gemini)를 기본값으로 씁니다.
+보고서 생성도 온라인 API(Claude)를 기본값으로 씁니다.
 
 대회 규정(안내받은 내용 기준):
   - 탐지 결과를 기반으로 자동 생성해야 하며, 확인되지 않은 내용은 포함하지 않음.
@@ -18,11 +18,11 @@ JSON 결과를 대시보드로 전송하는 단계(6단계) 자체가 인터넷 
 사실"로 넘깁니다 - LLM은 그 사실을 규정된 글자수 안에서 자연스러운 한국어 문장으로 표현하는
 역할만 담당합니다(LLM이 수치를 스스로 계산/추측하게 하면 오류 위험이 있으므로).
 
-안전장치: Gemini API 호출이 실패할 경우(키 미설정/네트워크 오류/타임아웃/요청한도 초과 등)
+안전장치: Claude API 호출이 실패할 경우(키 미설정/네트워크 오류/타임아웃/요청한도 초과 등)
 자동으로 결정론적 템플릿 생성으로 폴백합니다 -> API가 죽어도 임무는 절대 실패하지 않습니다.
 
-GEMINI_API_KEY 환경변수에 Google AI Studio(https://aistudio.google.com/apikey)에서
-발급받은 무료 API 키를 설정해야 합니다(코드에 직접 적지 말 것).
+ANTHROPIC_API_KEY 환경변수에 https://console.anthropic.com 에서 발급받은 API 키를
+설정해야 합니다(코드에 직접 적지 말 것).
 """
 import os
 import requests
@@ -32,9 +32,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 import field_config as fc
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-flash-lite-latest"  # "-latest" 별칭 사용: 구체적 버전 모델명은 신규 사용자에게 종종 폐기/차단됨
-GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+CLAUDE_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"  # 짧은 정형 문장 생성이라 가장 저렴한 모델로 충분
+CLAUDE_URL = "https://api.anthropic.com/v1/messages"
+CLAUDE_API_VERSION = "2023-06-01"
 REQUEST_TIMEOUT_SEC = 8        # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
 
 
@@ -62,13 +63,16 @@ def _prepare_facts(summary: dict) -> dict:
 
 
 REPORT_SYSTEM_PROMPT = f"""당신은 공군 전투피해평가(BDA) 보고서를 작성하는 참모 장교입니다.
-아래 [확정 사실]에 적힌 값만 사용해서 한국어 상황보고 한 문장을 작성하세요.
-- 반드시 포함할 내용: 보고 시각, 활주로구역 폭파구 개수, 활주로 가용길이, 상태, 운용여부.
+아래 [확정 사실]에 적힌 값만 사용해서 한국어 상황보고 문장을 작성하세요.
+- 반드시 포함할 내용: 보고 시각, 활주로 구역 폭파구 개수, 활주로 가용길이, 상태, 운용여부.
 - "폭파구"는 반드시 이 두 글자 그대로 쓰세요("폭발구", "파괴구" 등 다른 표현으로 바꾸지 마세요).
 - [확정 사실]의 "상태", "운용여부" 항목은 그 뒤에 적힌 값(문구)을 절대 바꾸지 말고 원문
   그대로 문장에 넣으세요. "상태", "운용여부"라는 항목 이름 자체를 문장에 쓰면 안 됩니다 -
   그 항목 뒤에 적힌 실제 값만 써야 합니다(예: 항목이 "상태: 비상 운용"이면 문장에는
   "비상 운용"이라고만 쓰고 "상태"라는 단어는 쓰지 마세요).
+  상태와 운용여부 값의 의미가 서로 겹쳐 보여도(예: 상태 "운용 불가", 운용여부
+  "사용 불가(폐쇄)") 절대 하나로 합쳐 요약하지 말고 두 값을 각각 빠짐없이 문장에
+  넣으세요.
   문장을 자연스럽게 끝맺기 위해 값 뒤에 서술어를 붙이는 것은 괜찮습니다.
   단, 운용여부 값이 정확히 "사용 가능 여부 검토"일 때만 반드시 "~가 필요합니다"를
   붙여 "사용 가능 여부 검토가 필요합니다"처럼 쓰세요 ("~검토 중입니다"는 쓰지 마세요).
@@ -76,7 +80,7 @@ REPORT_SYSTEM_PROMPT = f"""당신은 공군 전투피해평가(BDA) 보고서를
   이 서술어를 붙이지 말고 그 값만으로 자연스럽게 문장을 끝내세요 - 두 문구를 같이
   섞어서 쓰면 안 됩니다.
 - [확정 사실]에 없는 내용(시설물 피해, 불발탄 등 확인되지 않은 정보)은 절대 추가하지 마세요.
-- 공백 포함 {fc.REPORT_MAX_CHARS}자를 절대 넘기지 마세요.
+- 무조건 공백 포함 50~100자 사이로 제출하세요. 
 - 반드시 한국어 문장만 출력하고, 다른 설명이나 따옴표는 붙이지 마세요."""
 
 
@@ -88,7 +92,7 @@ def _build_prompt(facts: dict) -> str:
         f"- 상태: {facts['runway_status']}\n"
         f"- 운용여부: {facts['runway_availability']}"
     )
-    return f"{REPORT_SYSTEM_PROMPT}\n\n[확정 사실]\n{facts_text}\n\n[보고서]"
+    return f"[확정 사실]\n{facts_text}\n\n[보고서]"
 
 
 def _enforce_length(text: str) -> str:
@@ -129,33 +133,40 @@ def _validate_llm_text(text: str, facts: dict) -> str:
     return text
 
 
-def generate_report_via_gemini(summary: dict, model: str = GEMINI_MODEL) -> str:
+def generate_report_via_claude(summary: dict, model: str = CLAUDE_MODEL) -> str:
     """
-    Gemini API(무료 티어)에 요청. 키 미설정/네트워크 오류/요청한도 초과 등 어떤 이유로든
+    Claude API(Messages API)에 요청. 키 미설정/네트워크 오류/요청한도 초과 등 어떤 이유로든
     실패하면 예외를 던짐 (호출부에서 템플릿으로 폴백 처리).
     """
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
+    if not CLAUDE_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.")
     facts = _prepare_facts(summary)
-    prompt = _build_prompt(facts)
+    user_content = _build_prompt(facts)
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2},  # 보고서이므로 창의성보다 일관성 우선
+        "model": model,
+        "max_tokens": 200,
+        "temperature": 0.2,  # 보고서이므로 창의성보다 일관성 우선
+        "system": REPORT_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_content}],
     }
     resp = requests.post(
-        GEMINI_URL_TEMPLATE.format(model=model),
-        headers={"x-goog-api-key": GEMINI_API_KEY},  # 쿼리 파라미터로 넘기면 에러 메시지/로그에 키가 그대로 노출됨
+        CLAUDE_URL,
+        headers={
+            "x-api-key": CLAUDE_API_KEY,
+            "anthropic-version": CLAUDE_API_VERSION,
+            "content-type": "application/json",
+        },
         json=payload,
         timeout=REQUEST_TIMEOUT_SEC,
     )
     resp.raise_for_status()
     data = resp.json()
     try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        text = data["content"][0]["text"].strip()
     except (KeyError, IndexError):
-        raise RuntimeError(f"Gemini 응답 형식이 예상과 다름: {data!r}")
+        raise RuntimeError(f"Claude 응답 형식이 예상과 다름: {data!r}")
     if not text:
-        raise RuntimeError("Gemini가 빈 응답을 반환했습니다.")
+        raise RuntimeError("Claude가 빈 응답을 반환했습니다.")
     return _validate_llm_text(text, facts)
 
 
@@ -165,6 +176,7 @@ def generate_report_offline_template(summary: dict) -> str:
     이게 있어야 LLM 서버 장애 시에도 임무가 100% 완주됩니다.
     대회 규정(보고시각/활주로 폭파구 개수/가용길이/상태/운용여부, 100자 이내)을 그대로 충족합니다.
     """
+    print("llm 안불러짐")
     facts = _prepare_facts(summary)
     text = (
         f"{facts['report_time']} 기준, 활주로 폭파구 {facts['runway_crater_count']}개 탐지, "
@@ -176,13 +188,13 @@ def generate_report_offline_template(summary: dict) -> str:
 
 def generate_report(summary: dict, use_llm: bool = True) -> dict:
     """
-    메인 진입점. Gemini 시도 -> 실패 시 템플릿 폴백.
-    반환: {"text": str, "source": "gemini" | "offline_template"}
+    메인 진입점. Claude 시도 -> 실패 시 템플릿 폴백.
+    반환: {"text": str, "source": "claude" | "offline_template"}
     """
     if use_llm:
         try:
-            text = generate_report_via_gemini(summary)
-            return {"text": text, "source": "gemini"}
+            text = generate_report_via_claude(summary)
+            return {"text": text, "source": "claude"}
         except Exception as e:
             # 키 미설정/네트워크 오류/요청한도 초과 등 어떤 이유든 조용히 폴백
             fallback_text = generate_report_offline_template(summary)
