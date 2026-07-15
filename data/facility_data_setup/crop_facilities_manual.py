@@ -7,8 +7,8 @@ from pathlib import Path
 # 1. 경로 설정
 # ---------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-INPUT_DIR = BASE_DIR / "yolo_facility_dataset_2/val/normal"       # 원본 사진들이 있는 폴더 (수정해서 사용해!)
-OUTPUT_DIR = BASE_DIR / "yolo_facility_manual_dataset_2/train/normal"  # 잘라낸 사진이 저장될 폴더
+INPUT_DIR = BASE_DIR / "reherse_1st/reherse_1st_manual_calibrated/"       # 원본 사진들이 있는 폴더 (수정해서 사용해!)
+OUTPUT_DIR = BASE_DIR / "reherse_1st/reherse_1st_manual_calibrated_cropped/6"  # 잘라낸 사진이 저장될 폴더
 
 # 전역 변수 (마우스 콜백에서 사용)
 drawing = False
