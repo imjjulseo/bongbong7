@@ -35,7 +35,7 @@ from detection import (
     detect_zone_tiles, aggregate_temporal_status,
 )
 from tiling import crop_zone_tiles, crop_facility_rois, tile_origin_world_cm
-from geo_dedup import dedup_by_world_distance
+from geo_dedup import dedup_by_world_distance, dedup_by_zone
 import runway_analysis as rwa
 import facility_analysis as fca
 import uxo_analysis as uxa
@@ -176,9 +176,10 @@ class MissionPipeline:
                 facility_frame_results[slot].append((status, conf))
         self._toc("warp_and_detect")
 
-        # ---------------- 폭파구 중복 제거(프레임간, 실좌표 기준) ----------------
+        # ---------------- 폭파구 중복 제거(프레임간, 구역 기준 앙상블) ----------------
         self._tic("crater_postprocess")
-        craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
+        # 기존 코드: craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
+        craters_deduped = dedup_by_zone(raw_craters, class_key="size_class")
         self._toc("crater_postprocess")
 
         crater_list_out = [
@@ -226,9 +227,10 @@ class MissionPipeline:
         saved_files.append(self._save("facility_status.json", outputs["facility_status"]))
         self._toc("facility_analysis")
 
-        # ---------------- 불발탄 중복 제거(프레임간, 실좌표 기준) ----------------
+        # ---------------- 불발탄 중복 제거(프레임간, 구역 기준 앙상블) ----------------
         self._tic("uxo_postprocess")
-        uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
+        # 기존 코드: uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
+        uxo_deduped = dedup_by_zone(raw_uxo, class_key="type")
         self._toc("uxo_postprocess")
 
         # 서버가 uxo_detect 보고를 fc.UXO_DETECT_MAX_ENTRIES(구간)까지만 받음(초과 시 보고 전체를
