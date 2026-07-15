@@ -7,6 +7,7 @@ geo_dedup.py
 가까운 탐지끼리 하나로 묶어 중복을 제거합니다. (Union-Find 기반 클러스터링)
 """
 import numpy as np
+from collections import defaultdict
 
 
 class UnionFind:
@@ -62,6 +63,52 @@ def dedup_by_world_distance(detections: list, distance_threshold_cm: float = 5.0
         avg_xy = coords[idx_list].mean(axis=0)
         representative["world_xy"] = (float(avg_xy[0]), float(avg_xy[1]))
         representative["merged_count"] = len(group)
+        merged.append(representative)
+
+    return merged
+
+
+def dedup_by_zone(detections: list, class_key: str):
+    """
+    각 구역(segment)당 단 하나의 객체만 남기도록 프레임 간 앙상블을 수행합니다.
+    class_key: 폭파구의 경우 'size_class', 불발탄의 경우 'type'
+    """
+    if not detections:
+        return []
+
+    # 1. 구역(segment)별로 탐지된 결과를 그룹화
+    zone_groups = defaultdict(list)
+    for d in detections:
+        zone = d.get("segment")
+        if zone:
+            zone_groups[zone].append(d)
+
+    merged = []
+    for zone, group in zone_groups.items():
+        # 2. 세부 클래스별 누적 신뢰도(Confidence Sum) 계산
+        score_sums = defaultdict(float)
+        for d in group:
+            cls_val = d.get(class_key)
+            conf = d.get("confidence", 1.0)
+            score_sums[cls_val] += conf
+        
+        # 3. 누적 신뢰도가 가장 높은 세부 클래스 최종 선정
+        best_class = max(score_sums.items(), key=lambda x: x[1])[0]
+        
+        # 4. 선정된 클래스 그룹 내에서 대표값 추출 및 좌표 스무딩
+        best_class_detections = [d for d in group if d.get(class_key) == best_class]
+        best_class_detections.sort(key=lambda d: d.get("confidence", 0.0), reverse=True)
+        
+        representative = dict(best_class_detections[0]) # 최고 신뢰도 객체를 베이스로 사용
+        
+        # 대표 실좌표는 해당 클래스로 판별된 프레임들의 평균 좌표 사용
+        avg_x = sum(d["world_xy"][0] for d in best_class_detections) / len(best_class_detections)
+        avg_y = sum(d["world_xy"][1] for d in best_class_detections) / len(best_class_detections)
+        
+        representative["world_xy"] = (float(avg_x), float(avg_y))
+        representative["merged_count"] = len(group)
+        representative["accumulated_confidence"] = score_sums[best_class]
+        
         merged.append(representative)
 
     return merged
