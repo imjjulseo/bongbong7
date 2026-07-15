@@ -146,3 +146,39 @@ class FieldCalibrator:
         topview = cv2.warpPerspective(image_bgr, H_topview, (canvas_w, canvas_h))
         return topview, px_per_cm
 
+
+def estimate_camera_angle(pipeline):
+    """
+    파이프라인의 Calibrator에 저장된 마지막 ArUco 마커 코너 비율을 통해
+    카메라가 90도(TOP)인지 45도(SIDE)인지 판별합니다.
+    """
+    try:
+        corners = pipeline.calibrator.last_marker_corners
+        if corners is None or len(corners) == 0:
+            return "TOP_VIEW"
+
+        angles = []
+        for corner_set in corners:
+            c = corner_set.reshape(4, 2)
+            top_edge = np.linalg.norm(c[0] - c[1])
+            bottom_edge = np.linalg.norm(c[3] - c[2])
+            left_edge = np.linalg.norm(c[0] - c[3])
+            right_edge = np.linalg.norm(c[1] - c[2])
+
+            avg_w = (top_edge + bottom_edge) / 2.0
+            avg_h = (left_edge + right_edge) / 2.0
+            ratio = avg_h / avg_w if avg_w > 0 else 0
+            # 겉보기 비율이 1에 가까우면 수직, 압축되어 0.85 미만이면 측면으로 간주
+            if ratio > 0.85:
+                angles.append("TOP_VIEW")
+            else:
+                angles.append("SIDE_VIEW")
+
+        # 다수결 판별
+        if angles.count("TOP_VIEW") > len(angles) / 2:
+            return "TOP_VIEW"
+        else:
+            return "SIDE_VIEW"
+    except Exception as e:
+        print(f"[video_watcher] 각도 판별 오류 (기본값 TOP_VIEW 사용): {e}")
+        return "TOP_VIEW"
