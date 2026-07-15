@@ -44,6 +44,24 @@ def validate_all(outputs: dict, raise_on_error: bool = False):
                 f"활주로 폭파구 개수({runway_count})가 전체 탐지 개수({detect_total})보다 많을 수 없습니다."
             )
 
+    # 2-1. crater_detect / uxo_detect 건수가 서버 허용 범위(최소~최대) 안에 있는지
+    #      (범위를 벗어나면 서버가 보고 전체를 거부함 - pipeline.py가 전송 전 자동 보정하지만,
+    #      outputs를 직접 만들어 검증할 때를 위해 여기서도 다시 확인)
+    if "crater_detect" in outputs:
+        n = len(outputs["crater_detect"].get("crater_detect", []))
+        if not (fc.CRATER_DETECT_MIN_ENTRIES <= n <= fc.CRATER_DETECT_MAX_ENTRIES):
+            errors.append(
+                f"crater_detect 건수({n})가 서버 허용 범위"
+                f"({fc.CRATER_DETECT_MIN_ENTRIES}~{fc.CRATER_DETECT_MAX_ENTRIES}건)를 벗어났습니다."
+            )
+    if "uxo_detect" in outputs:
+        n = len(outputs["uxo_detect"].get("uxo_detect", []))
+        if not (fc.UXO_DETECT_MIN_ENTRIES <= n <= fc.UXO_DETECT_MAX_ENTRIES):
+            errors.append(
+                f"uxo_detect 건수({n})가 서버 허용 범위"
+                f"({fc.UXO_DETECT_MIN_ENTRIES}~{fc.UXO_DETECT_MAX_ENTRIES}건)를 벗어났습니다."
+            )
+
     # 3. 시설물 6개 슬롯 확인 (누락 방지 핵심 체크)
     if "facility_status" in outputs:
         facilities = outputs["facility_status"].get("facility_status", [])

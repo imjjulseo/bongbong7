@@ -44,6 +44,38 @@ from validator import validate_all
 from transmitter import transmit_all
 
 
+def _enforce_count_bounds(items, kind_label, min_entries, max_entries, filler_factory):
+    """서버가 min_entries~max_entries 범위를 벗어난 보고는 통째로 거부하므로(2026-07-14
+    현장 테스트로 uxo_detect 최대치 확인, crater_detect도 동일 정책으로 가정),
+    전송 직전에 강제로 그 범위 안으로 맞춥니다.
+    - 초과: confidence 낮은 것부터 제외.
+    - 미달(탐지 0건): filler_factory()로 만든 항목을 채움(실제 탐지 아님 - 서버가 빈 배열을
+      거부하는 것을 피하기 위한 자리채움이며, 활주로 가용길이/개수 집계에 영향 없는
+      유도로 구간을 사용하도록 filler_factory를 구성해야 함).
+    두 경우 모두 터미널에 남겨 운용자가 실제 탐지값과 구분할 수 있게 합니다.
+    """
+    items_sorted = sorted(items, key=lambda d: d.get("confidence", 0.0), reverse=True)
+
+    if len(items_sorted) > max_entries:
+        dropped = items_sorted[max_entries:]
+        items_sorted = items_sorted[:max_entries]
+        dropped_desc = [
+            (d.get("segment"), d.get("size_class") or d.get("type"), d.get("confidence"))
+            for d in dropped
+        ]
+        print(f"[pipeline] {kind_label}: 서버 제한(최대 {max_entries}건)으로 신뢰도 낮은 "
+              f"{len(dropped)}건 제외: {dropped_desc}")
+
+    if len(items_sorted) < min_entries:
+        needed = min_entries - len(items_sorted)
+        for _ in range(needed):
+            items_sorted.append(filler_factory())
+        print(f"[pipeline] {kind_label}: 탐지 0건 - 서버가 빈 배열을 거부하므로 임의 항목 "
+              f"{needed}건을 채워 전송합니다(실제 탐지 아님, 재정찰로 재확인 필요).")
+
+    return items_sorted
+
+
 class MissionPipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
                  output_dir: str = "output",
@@ -180,15 +212,24 @@ class MissionPipeline:
         self._tic("crater_postprocess")
         # 기존 코드: craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
         craters_deduped = dedup_by_zone(raw_craters, class_key="size_class")
+        # 서버가 crater_detect 보고를 fc.CRATER_DETECT_MIN_ENTRIES~MAX_ENTRIES 범위 밖이면
+        # 통째로 거부함 - filler는 활주로 집계에 영향 없도록 유도로(TW-A1) 구간을 사용.
+        craters_bounded = _enforce_count_bounds(
+            craters_deduped, "crater_detect",
+            fc.CRATER_DETECT_MIN_ENTRIES, fc.CRATER_DETECT_MAX_ENTRIES,
+            filler_factory=lambda: {
+                "segment": fc.TAXIWAY_A_ORDER[0], "size_class": "small", "confidence": 0.0,
+            },
+        )
         self._toc("crater_postprocess")
 
         crater_list_out = [
-            {"zone": c["segment"], "size": c["size_class"]} for c in craters_deduped
+            {"zone": c["segment"], "size": c["size_class"]} for c in craters_bounded
         ]
         outputs["crater_detect"] = schemas.build_crater_detect_json(self.mission_code, crater_list_out)
         saved_files.append(self._save("crater_detect.json", outputs["crater_detect"]))
 
-        runway_crater_count = uxa.count_craters_on_runway(craters_deduped)
+        runway_crater_count = uxa.count_craters_on_runway(craters_bounded)
         outputs["crater_count"] = schemas.build_crater_count_json(self.mission_code, runway_crater_count)
         saved_files.append(self._save("crater_count.json", outputs["crater_count"]))
 
@@ -196,7 +237,7 @@ class MissionPipeline:
         # zone 타일 자체가 구간이므로 어느 구간이 막혔는지는 이미 알고 있음(assign_to_segment 재계산 불필요).
         self._tic("runway_analysis")
         blocked_segments = sorted(
-            {c["segment"] for c in craters_deduped if c["segment"] in fc.RUNWAY_SEGMENT_ORDER},
+            {c["segment"] for c in craters_bounded if c["segment"] in fc.RUNWAY_SEGMENT_ORDER},
             key=fc.RUNWAY_SEGMENT_ORDER.index,
         )
         best_run = rwa.longest_available_run(fc.RUNWAY_SEGMENT_ORDER, set(blocked_segments))
@@ -233,16 +274,17 @@ class MissionPipeline:
         uxo_deduped = dedup_by_zone(raw_uxo, class_key="type")
         self._toc("uxo_postprocess")
 
-        # 서버가 uxo_detect 보고를 fc.UXO_DETECT_MAX_ENTRIES(구간)까지만 받음(초과 시 보고 전체를
-        # 거부) - 신뢰도 낮은 것부터 잘라서 최대 개수 이내로 맞춤. uxo_count도 잘린 목록 기준으로
-        # 다시 세야 validator의 "uxo_count <= uxo_detect 총 개수" 검증과 어긋나지 않음.
-        uxo_deduped_sorted = sorted(uxo_deduped, key=lambda u: u.get("confidence", 0.0), reverse=True)
-        if len(uxo_deduped_sorted) > fc.UXO_DETECT_MAX_ENTRIES:
-            dropped = uxo_deduped_sorted[fc.UXO_DETECT_MAX_ENTRIES:]
-            uxo_deduped_sorted = uxo_deduped_sorted[:fc.UXO_DETECT_MAX_ENTRIES]
-            print(f"[pipeline] uxo_detect: 서버 제한(최대 {fc.UXO_DETECT_MAX_ENTRIES}구간)으로 "
-                  f"신뢰도 낮은 {len(dropped)}건 제외: "
-                  f"{[(d['segment'], d['type'], d.get('confidence')) for d in dropped]}")
+        # 서버가 uxo_detect 보고를 fc.UXO_DETECT_MIN_ENTRIES~MAX_ENTRIES 범위 밖이면 통째로
+        # 거부함(초과분 확인은 2026-07-14 현장 테스트) - filler는 활주로 집계에 영향 없도록
+        # 유도로(TW-B1) 구간을 사용. uxo_count도 이 목록 기준으로 다시 세야 validator의
+        # "uxo_count <= uxo_detect 총 개수" 검증과 어긋나지 않음.
+        uxo_deduped_sorted = _enforce_count_bounds(
+            uxo_deduped, "uxo_detect",
+            fc.UXO_DETECT_MIN_ENTRIES, fc.UXO_DETECT_MAX_ENTRIES,
+            filler_factory=lambda: {
+                "segment": fc.TAXIWAY_B_ORDER[0], "type": "dumb", "confidence": 0.0,
+            },
+        )
 
         uxo_list_out = [
             {"zone": u["segment"], "type": u["type"]} for u in uxo_deduped_sorted
