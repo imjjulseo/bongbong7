@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import field_config as fc
 
 BASE_DIR = Path(__file__).resolve().parent
-DATASET_DIR = BASE_DIR / "2ndtry.yolov11/train"
+DATASET_DIR = BASE_DIR / "3rdtry.yolov11/train"
 IMAGES_DIR = DATASET_DIR / "images"
 LABELS_DIR = DATASET_DIR / "labels"
 OUTPUT_DIR = DATASET_DIR / "visualized"
@@ -42,7 +42,7 @@ def visualize_yolo_labels_with_zones():
 
     print(f"총 {len(image_files)}장의 이미지에 구역(Zone)과 객체 폴리곤/박스 그리기 시작...")
 
-    for img_path in image_files:
+    for img_path in image_files[:1]:
         # 1. 이미지 로드
         img = cv2.imread(str(img_path))
         if img is None:
@@ -114,6 +114,7 @@ def visualize_yolo_labels_with_zones():
                 pts[:, 0] *= img_w
                 pts[:, 1] *= img_h
                 pts = pts.astype(np.int32)
+                print(pts)
                 # 1. 다각형 외곽선 굵게 그리기
                 cv2.polylines(img, [pts], isClosed=True, color=color, thickness=5)
                 
