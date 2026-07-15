@@ -234,29 +234,6 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
                 bg_img = overlay_transparent(bg_img, obj_rotated_tight, rand_x, rand_y)
                 placed_boxes.append(current_box)
                 placed = True
-
-                # SMOKE
-                if random.random() < 0.5:
-                    smoke_cx = int(rand_x + obj_w / 2)
-                    smoke_cy = int(rand_y + obj_h / 2)
-                    
-                    # 객체 크기에 비례하여 연기 반경 설정 (원하는 크기로 변경 가능)
-                    smoke_radius = random.randint(int(obj_w * 0.8), int(obj_w * 2.0))
-                    smoke_density = random.uniform(0.5, 0.9)
-                    
-                    # 어두운 회색부터 밝은 회색까지 랜덤 연기 색상
-                    gray_val = random.randint(100, 220)
-                    smoke_color = (gray_val, gray_val, gray_val)
-                    
-                    bg_img = smoke.add_smoke(
-                        image=bg_img, 
-                        center_x=smoke_cx, 
-                        center_y=smoke_cy, 
-                        radius=smoke_radius, 
-                        density=smoke_density, 
-                        smoke_color=smoke_color
-                    )
-                
                 # YOLO Bounding Box 텍스트 기록
                 class_id = YOLO_CLASS_MAP.get(cls_name, -1)
                 if class_id != -1:
@@ -269,6 +246,41 @@ def generate_constrained_map(image_output_path, label_output_path, object_pool):
             
             if not placed:
                 print(f"  [!] {zone_name} 내에 조건을 만족하는 빈 공간이 부족해 {cls_name} 배치를 생략합니다.")
+
+    # fa_zones = [z for z in all_zones if z.startswith("FA")]
+        
+    # for zone_name in fa_zones:
+    #     # 예: 각 시설물마다 30% 확률로 화재(연기) 발생
+    #     if random.random() < 0.3:
+    #         rect_px = get_pixel_zone_rect(zone_name, actual_px_per_cm)
+    #         if not rect_px: continue
+            
+    #         zx1, zy1, zx2, zy2 = rect_px
+            
+    #         # 2. 시설물 구역의 정중앙 좌표(Fixed Position) 계산
+    #         center_x = (zx1 + zx2) // 2
+    #         center_y = (zy1 + zy2) // 2
+            
+    #         # 3. 구역의 크기(너비/높이)에 맞춰 연기 반경 자동 조절
+    #         zone_width = zx2 - zx1
+    #         zone_height = zy2 - zy1
+    #         smoke_radius = int(max(zone_width, zone_height) * 0.7) 
+            
+    #         # 4. 화재를 묘사하는 짙은 그을음(어두운 회색/검은색) 설정
+    #         gray_val = random.randint(30, 80)
+    #         smoke_color = (gray_val, gray_val, gray_val)
+    #         smoke_density = random.uniform(0.7, 0.95)
+            
+    #         # 5. 연기 합성
+    #         bg_img = smoke.add_smoke(
+    #             image=bg_img, 
+    #             center_x=center_x, 
+    #             center_y=center_y, 
+    #             radius=smoke_radius, 
+    #             density=smoke_density, 
+    #             smoke_color=smoke_color
+    #         )
+
 
     cv2.imwrite(str(image_output_path), bg_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
     with open(label_output_path, "w") as f:
