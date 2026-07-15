@@ -68,7 +68,14 @@ def _zone_fractions(zone_order):
 
 
 def _read_yolo_labels(label_path):
-    """YOLO txt (cls cx cy w h, 전부 정규화) -> [(cls,cx,cy,w,h), ...]"""
+    """YOLO txt 라벨 읽기 -> [(cls,cx,cy,w,h), ...] (전부 정규화 좌표).
+    두 포맷을 모두 지원함:
+      - bbox: cls cx cy w h (5컬럼)
+      - segmentation polygon: cls x1 y1 x2 y2 ... xn yn (7컬럼 이상, 홀수) - Roboflow에서
+        폴리곤으로 라벨링해 내보낸 경우 이 포맷으로 옴. parts[1:5]만 잘라 읽으면 폴리곤의
+        앞쪽 두 꼭짓점을 cx,cy,w,h로 잘못 해석하게 되므로(인접 꼭짓점끼리 좌표가 비슷해
+        w≈cx처럼 보이는 깨진 값이 나옴), 점들의 min/max로 axis-aligned bbox를 만들어 사용함.
+    """
     labels = []
     if not os.path.exists(label_path):
         return labels  # 라벨 없는 배경 이미지 -> 빈 라벨(정탐 억제용)로 취급
@@ -78,7 +85,15 @@ def _read_yolo_labels(label_path):
             if len(parts) < 5:
                 continue
             cls = int(float(parts[0]))
-            cx, cy, w, h = (float(v) for v in parts[1:5])
+            coords = [float(v) for v in parts[1:]]
+            if len(parts) == 5:
+                cx, cy, w, h = coords
+            else:
+                xs, ys = coords[0::2], coords[1::2]
+                x_min, x_max = min(xs), max(xs)
+                y_min, y_max = min(ys), max(ys)
+                cx, cy = (x_min + x_max) / 2, (y_min + y_max) / 2
+                w, h = x_max - x_min, y_max - y_min
             labels.append((cls, cx, cy, w, h))
     return labels
 

@@ -21,8 +21,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 
 import field_config as fc
 from calibration import FieldCalibrator
-from tiling import crop_zone_tiles, crop_facility_rois
-from detection import build_object_detector, detect_zone_tiles, build_facility_classifier
+from tiling import crop_zone_tiles, crop_facility_rois, tile_origin_world_cm
+from detection import build_object_detector, detect_zone_tiles, build_facility_classifier, reclassify_crater_size
+from geo_dedup import dedup_by_world_distance
 from img_io import imread_safe, imwrite_safe
 
 GRID_COLOR = (110, 96, 80)
@@ -58,6 +59,12 @@ def main():
     parser.add_argument("--facility-conf", type=float, default=None,
                          help="시설물 분류 conf threshold (생략 시 field_config 기본값)")
     parser.add_argument("--no-facility", action="store_true", help="시설물 상태 분류는 건너뛰고 폭파구/불발탄만 시각화")
+    parser.add_argument("--no-dedup", action="store_true",
+                         help="pipeline.py와 동일한 실좌표 dedup을 끄고 zone별 raw 탐지를 그대로 시각화 "
+                              "(zone 경계에 걸친 물체가 두 zone에서 중복 탐지되는 걸 확인하고 싶을 때)")
+    parser.add_argument("--no-size-fix", action="store_true",
+                         help="크레이터 크기(big/medium/small) 통계 기반 재판정(detection.reclassify_crater_size)을 "
+                              "끄고 YOLO가 예측한 클래스를 그대로 사용")
     parser.add_argument("--output-dir", default="debug_viz")
     args = parser.parse_args()
 
@@ -100,22 +107,58 @@ def main():
         cv2.rectangle(canvas, (x0, y0), (x1, y1), GRID_COLOR, 1)
         cv2.putText(canvas, zone_name, (x0 + 4, y0 + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, GRID_COLOR, 1, cv2.LINE_AA)
 
-    total = 0
     print(f"[debug_visualize] {args.image} -> px_per_cm={px_per_cm}")
+
+    # zone별 raw 탐지 -> 실좌표(world_xy) 붙여서 하나의 리스트로 모음 (pipeline.py의 3-A와 동일)
+    raw_craters, raw_uxo = [], []
     for zone_name, dets in detections_by_zone.items():
-        if not dets:
-            continue
-        x0, y0, _, _ = zone_pixel_rect(zone_name, px_per_cm)
+        origin_x_cm, origin_y_cm = tile_origin_world_cm(zone_name)
         for det in dets:
-            cx, cy = det.center_px
-            gx, gy = x0 + cx, y0 + cy
-            r = max(det.equiv_diameter_px, 6) / 2
-            cv2.circle(canvas, (int(gx), int(gy)), int(r), DET_COLOR, 2, cv2.LINE_AA)
-            conf_str = f"{det.confidence:.2f}" if det.confidence is not None else "?"
-            label = f"{det.subtype or '?'} {conf_str}"
-            cv2.putText(canvas, label, (int(gx - r), int(gy - r - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, DET_COLOR, 1, cv2.LINE_AA)
-            total += 1
-            print(f"  {zone_name}: {det.category}/{det.subtype} conf={conf_str}")
+            lx, ly = det.center_px
+            entry = {
+                "world_xy": (origin_x_cm + lx / px_per_cm, origin_y_cm + ly / px_per_cm),
+                "category": det.category,
+                "subtype": det.subtype,
+                "confidence": det.confidence,
+                "segment": zone_name,
+                "equiv_diameter_px": det.equiv_diameter_px,
+            }
+            if det.category == "crater" and not args.no_size_fix:
+                diameter_mm = (det.equiv_diameter_px / px_per_cm) * 10.0
+                new_subtype = reclassify_crater_size(diameter_mm)
+                if new_subtype != det.subtype:
+                    entry["subtype_orig"] = det.subtype
+                entry["subtype"] = new_subtype
+            (raw_craters if det.category == "crater" else raw_uxo).append(entry)
+
+    if args.no_dedup:
+        final_dets = raw_craters + raw_uxo
+    else:
+        # pipeline.py와 동일한 임계값(크레이터 5cm, 불발탄 3cm) - zone 경계에 걸쳐 두 zone에서
+        # 중복 탐지된 같은 물체를 하나로 합침(신뢰도 높은 쪽을 대표로 채택).
+        deduped_craters = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
+        deduped_uxo = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
+        final_dets = deduped_craters + deduped_uxo
+        n_raw = len(raw_craters) + len(raw_uxo)
+        if n_raw != len(final_dets):
+            print(f"  (dedup: raw {n_raw}건 -> {len(final_dets)}건, zone 경계 중복 {n_raw - len(final_dets)}건 병합)")
+
+    total = 0
+    for d in final_dets:
+        wx, wy = d["world_xy"]
+        gx, gy = wx * px_per_cm, wy * px_per_cm
+        r = max(d["equiv_diameter_px"], 6) / 2
+        cv2.circle(canvas, (int(gx), int(gy)), int(r), DET_COLOR, 2, cv2.LINE_AA)
+        conf_str = f"{d['confidence']:.2f}" if d["confidence"] is not None else "?"
+        label = f"{d['subtype'] or '?'} {conf_str}"
+        cv2.putText(canvas, label, (int(gx - r), int(gy - r - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, DET_COLOR, 1, cv2.LINE_AA)
+        total += 1
+        tag = ""
+        if d.get("merged_count", 1) > 1:
+            tag += f" (merged x{d['merged_count']})"
+        if "subtype_orig" in d:
+            tag += f" (크기 재판정: {d['subtype_orig']}->{d['subtype']})"
+        print(f"  {d['segment']}: {d['category']}/{d['subtype']} conf={conf_str}{tag}")
 
     if facility_status:
         print("[시설물 상태]")

@@ -109,6 +109,24 @@ def mask_out_regions(image_bgr: np.ndarray, polygons: list, fill_value=255):
     return masked
 
 
+# 2026-07-15 라벨 통계(trashcan/3rdtry.yolov11 + yolo_obj_dataset + enhancement/generated_dataset,
+# 630개 크레이터 라벨 실측)로 얻은 경계값. medium이 small~big 사이에서 폭넓게 퍼져 있고
+# (중앙값 16.0cm) big 최솟값(18.0cm)과 겨우 0.5~1cm 차이라 YOLO가 자주 혼동함 - 데이터셋
+# 자체를 재생성하기 전까지, 탐지 후 실측 등가지름(diameter_mm)으로 크레이터 크기만 다시
+# 판정하는 임시 보정. UXO(missile/dumb/cluster)는 형태 기반이라 이 보정 대상이 아님.
+CRATER_SIZE_THRESHOLDS_CM = (13.1, 18.4)  # (small/medium 경계, medium/big 경계)
+
+
+def reclassify_crater_size(diameter_mm: float) -> str:
+    """실측 등가지름(mm)으로 크레이터 크기(big/medium/small)를 통계 기반 임계값으로 재판정."""
+    d_cm = diameter_mm / 10.0
+    if d_cm < CRATER_SIZE_THRESHOLDS_CM[0]:
+        return "small"
+    if d_cm < CRATER_SIZE_THRESHOLDS_CM[1]:
+        return "medium"
+    return "big"
+
+
 def classify_blob(diameter_mm: float, long_axis_mm: float, aspect_ratio: float):
     """
     실측 mm 크기 + 종횡비를 기준으로 '폭파구' 또는 '불발탄' 중 어느 쪽에 더 가까운지,
