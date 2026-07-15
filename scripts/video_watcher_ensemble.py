@@ -80,29 +80,31 @@ def _wait_until_stable(path: str, poll_sec: float = 0.5, stable_checks: int = 2)
         time.sleep(poll_sec)
 
 
-def quick_check_aruco(video_path: str) -> bool:
+def quick_check_aruco(video_path: str):
     """
     드론이 정지 상태에서 촬영한다는 전제 하에, 영상 중간 프레임 1장만 빠르게 읽어
     ArUco 마커 캘리브레이션이 되는지 확인합니다. 프레임 전체 추출/YOLO 추론 전에
     마커가 아예 안 잡히는 영상을 빠르게 걸러내기 위한 용도입니다.
-    반환: 캘리브레이션 성공 여부
+    성공한 중간 프레임 자체를 돌려줘서, 코팅 반사 등으로 실제 추출된 프레임들에서는
+    마커가 하나도 안 잡히더라도 이 프레임 한 장은 파이프라인에서 그대로 쓸 수 있게 합니다.
+    반환: 캘리브레이션에 성공한 프레임(BGR numpy) 또는 실패 시 None
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         cap.release()
-        return False
+        return None
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     mid_idx = max(0, total_frames // 2)
     cap.set(cv2.CAP_PROP_POS_FRAMES, mid_idx)
     ok, frame = cap.read()
     cap.release()
     if not ok or frame is None:
-        return False
+        return None
     try:
         FieldCalibrator().calibrate_from_image(frame)
-        return True
+        return frame
     except Exception:
-        return False
+        return None
 
 
 def extract_frames(video_path: str, output_dir: str, interval: int = None) -> list:
@@ -165,18 +167,26 @@ def process_video(video_path: str, args, state: "MissionState"):
     print(f"[video_watcher] 새 영상 감지: {video_path}")
     _wait_until_stable(video_path, poll_sec=min(1.0, fc.VIDEO_STABLE_WAIT_SEC), stable_checks=2)
 
-    if not args.no_aruco_precheck and not quick_check_aruco(video_path):
-        print("[video_watcher] ArUco마커가 탐지되지 않았습니다. 이 영상은 건너뜁니다.")
-        return
+    precheck_frame = None
+    if not args.no_aruco_precheck:
+        precheck_frame = quick_check_aruco(video_path)
+        if precheck_frame is None:
+            print("[video_watcher] ArUco마커가 탐지되지 않았습니다. 이 영상은 건너뜁니다.")
+            return
+        print("[video_watcher] ArUco마커가 탐지되었습니다.")
 
     frame_paths = extract_frames(video_path, fc.FRAME_OUTPUT_DIR, args.interval)
     print(f"[video_watcher] 프레임 {len(frame_paths)}장 추출 완료 -> {fc.FRAME_OUTPUT_DIR}")
 
-    if args.no_auto_run or not frame_paths:
+    if args.no_auto_run:
         return
 
     new_frames = [imread_safe(p) for p in frame_paths]
     new_frames = [f for f in new_frames if f is not None]
+    if precheck_frame is not None:
+        # 추출된 프레임들에서 전부 마커 검출이 실패해도(코팅 반사 등), precheck에서 이미
+        # 마커 검출에 성공한 중간 프레임 한 장은 보장되므로 항상 포함시킵니다.
+        new_frames.append(precheck_frame)
     if not new_frames:
         print("[video_watcher] 추출된 프레임을 읽지 못해 파이프라인을 건너뜁니다.")
         return
@@ -303,7 +313,7 @@ def main():
     parser.add_argument("--visualize", action="store_true",
                          help="최종 JSON과 동일한 결과를 프레임 위에 그려 output/visualize.png로 저장")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None)
-    parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None)
+    parser.add_argument("--facility-backend", choices=["classical", "yolo", "hybrid"], default=None)
     parser.add_argument("--weights", type=str, default=None,
                          help="yolo 백엔드일 때 field_config.YOLO_OBJECT_WEIGHTS 대신 쓸 폭파구/불발탄 탐지 "
                               "가중치(.pt) 경로 (학습 중인 체크포인트를 바로 테스트할 때 등)")

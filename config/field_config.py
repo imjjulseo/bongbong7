@@ -162,7 +162,10 @@ MISSION_TIME_LIMIT_SEC = 180
 # 아래 두 값만 "yolo"로 바꾸면 src/pipeline.py 수정 없이 백엔드가 전환됩니다.
 # (src/detection.py의 build_object_detector()/build_facility_classifier() 참고)
 DETECTOR_BACKEND = "yolo"         # "classical" | "yolo" - 폭파구/불발탄 통합 탐지 (확정 파이프라인: yolo)
-FACILITY_BACKEND = "yolo"        # "classical" | "yolo" - 시설물 상태(normal/destroy/fire) 분류 (확정 파이프라인: yolo)
+FACILITY_BACKEND = "hybrid"        # "classical" | "yolo" | "hybrid" - 시설물 상태(normal/destroy/fire) 분류
+# hybrid: fire 판정만 고전 CV(detection.classify_fire_by_contrast, precision 100%로 검증됨)가 전담하고
+# fire 아니면 YOLO(destroy/normal 판정)에 위임. destroy의 붉은 파손 스티커를 fire로 오인하는 문제를
+# 근본적으로 차단하고 싶으면 "hybrid"로 바꿀 것 (2026-07-15 yolo_facility1+2 552장으로 검증).
 
 # --- 폭파구/불발탄 YOLO 모델 설정 (3-A: zone 타일 배치 추론) ---
 # 2026-07-14: 3rdtry.yolov11 + yolo_obj_dataset(실사진) + enhancement/generated_dataset(합성 100장)
